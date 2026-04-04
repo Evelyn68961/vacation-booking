@@ -1,0 +1,768 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>預假系統</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --c-bg: #F7F8FA;
+      --c-surface: #FFFFFF;
+      --c-primary: #2563EB;
+      --c-primary-dark: #1D4ED8;
+      --c-green: #16A34A;
+      --c-amber: #D97706;
+      --c-red: #DC2626;
+      --c-gray: #9CA3AF;
+      --c-text: #1F2937;
+      --c-text-secondary: #6B7280;
+      --c-border: #E5E7EB;
+      --c-selected: #DBEAFE;
+      --c-selected-border: #60A5FA;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Noto Sans TC', system-ui, sans-serif;
+      background: var(--c-bg);
+      color: var(--c-text);
+      min-height: 100vh;
+    }
+    .cal-day {
+      width: 100%; aspect-ratio: 1;
+      display: flex; align-items: center; justify-content: center;
+      border-radius: 6px; font-size: 13px; cursor: pointer;
+      transition: all 0.15s ease;
+      position: relative;
+      font-weight: 500;
+    }
+    .cal-day:hover:not(.cal-disabled):not(.cal-full) {
+      box-shadow: 0 0 0 2px var(--c-primary);
+    }
+    .cal-available { background: #DCFCE7; color: #15803D; }
+    .cal-half     { background: #FEF3C7; color: #92400E; }
+    .cal-full     { background: #FEE2E2; color: #991B1B; cursor: not-allowed; }
+    .cal-disabled { background: #F3F4F6; color: #D1D5DB; cursor: default; }
+    .cal-selected { background: var(--c-selected) !important; color: var(--c-primary) !important; box-shadow: 0 0 0 2px var(--c-selected-border); z-index: 1; }
+    .cal-range-start { border-radius: 6px 0 0 6px; }
+    .cal-range-end   { border-radius: 0 6px 6px 0; }
+    .cal-range-mid   { border-radius: 0; }
+
+    .badge-count {
+      position: absolute; top: 2px; right: 3px;
+      font-size: 9px; font-weight: 700;
+      background: rgba(0,0,0,0.12); border-radius: 50%;
+      width: 14px; height: 14px;
+      display: flex; align-items: center; justify-content: center;
+    }
+
+    .btn-primary {
+      background: var(--c-primary); color: #fff;
+      padding: 10px 24px; border-radius: 8px; border: none;
+      font-weight: 600; font-size: 15px; cursor: pointer;
+      transition: background 0.2s;
+    }
+    .btn-primary:hover:not(:disabled) { background: var(--c-primary-dark); }
+    .btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    .card {
+      background: var(--c-surface); border-radius: 12px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+      border: 1px solid var(--c-border);
+    }
+
+    .status-dot {
+      width: 10px; height: 10px; border-radius: 50%; display: inline-block;
+    }
+    .status-open { background: var(--c-green); box-shadow: 0 0 6px rgba(22,163,74,0.5); }
+    .status-closed { background: var(--c-red); box-shadow: 0 0 6px rgba(220,38,38,0.5); }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .fade-in { animation: fadeIn 0.3s ease forwards; }
+
+    @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:.4; } }
+    .skeleton { animation: pulse 1.5s ease-in-out infinite; background: #E5E7EB; border-radius: 6px; }
+
+    .modal-overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.4);
+      display: flex; align-items: center; justify-content: center; z-index: 50;
+    }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect, useCallback, useMemo, useRef } = React;
+
+    // ★★★ PASTE YOUR DEPLOYED GAS WEB APP URL HERE ★★★
+    const GAS_URL = 'https://script.google.com/macros/s/AKfycbx2F6_qYK2EkiLSL5CKsDgSq5ONBxMv6rhesg6MpTIB0NsOweUuIjh5T77hL_4w8OvK/exec';
+
+    // ======================== API Layer ========================
+    async function gasGet(action) {
+      const url = GAS_URL + '?action=' + action;
+      const res = await fetch(url);
+      if (!res.ok) throw new Error('Network error: ' + res.status);
+      return res.json();
+    }
+
+    async function gasPost(body) {
+      const res = await fetch(GAS_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) throw new Error('Network error: ' + res.status);
+      return res.json();
+    }
+
+    // ======================== Helpers ========================
+    function fmtDate(d) {
+      return d.getFullYear() + '-' +
+        String(d.getMonth() + 1).padStart(2, '0') + '-' +
+        String(d.getDate()).padStart(2, '0');
+    }
+    function parseDate(s) {
+      const p = s.split('-');
+      return new Date(Number(p[0]), Number(p[1]) - 1, Number(p[2]));
+    }
+    function daysBetween(a, b) {
+      return Math.round((b - a) / 86400000) + 1;
+    }
+    function addDays(d, n) {
+      const r = new Date(d);
+      r.setDate(r.getDate() + n);
+      return r;
+    }
+    function sameDay(a, b) { return fmtDate(a) === fmtDate(b); }
+
+    function expandRange(startStr, endStr) {
+      const dates = [];
+      const s = parseDate(startStr);
+      const e = parseDate(endStr);
+      const c = new Date(s);
+      while (c <= e) { dates.push(fmtDate(c)); c.setDate(c.getDate() + 1); }
+      return dates;
+    }
+
+    // ======================== Countdown ========================
+    function useCountdown(targetIso) {
+      const [left, setLeft] = useState('');
+      useEffect(() => {
+        if (!targetIso) return;
+        const target = new Date(targetIso).getTime();
+        function tick() {
+          const diff = target - Date.now();
+          if (diff <= 0) { setLeft('已開放'); return; }
+          const d = Math.floor(diff / 86400000);
+          const h = Math.floor((diff % 86400000) / 3600000);
+          const m = Math.floor((diff % 3600000) / 60000);
+          const s = Math.floor((diff % 60000) / 1000);
+          setLeft(`${d}天 ${h}時 ${m}分 ${s}秒`);
+        }
+        tick();
+        const id = setInterval(tick, 1000);
+        return () => clearInterval(id);
+      }, [targetIso]);
+      return left;
+    }
+
+    // ======================== StatusBar ========================
+    function StatusBar({ status, loading }) {
+      const countdown = useCountdown(status?.gateTime);
+
+      if (loading || !status) {
+        return (
+          <div className="card p-4 mb-4">
+            <div className="skeleton" style={{ height: 24, width: 200, marginBottom: 8 }} />
+            <div className="skeleton" style={{ height: 16, width: 300 }} />
+          </div>
+        );
+      }
+
+      const open = status.gateOpen;
+      const roundLabel = status.currentRound;
+      const range = status.bookableRange;
+
+      return (
+        <div className="card p-4 mb-4 fade-in">
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <h1 style={{ fontSize: 20, fontWeight: 700 }}>預假系統</h1>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 12px', borderRadius: 20, background: open ? '#DCFCE7' : '#FEE2E2', fontSize: 13, fontWeight: 600 }}>
+                <span className={`status-dot ${open ? 'status-open' : 'status-closed'}`} />
+                {open ? '已開放' : '未開放'}
+              </div>
+              <span style={{ fontSize: 13, color: 'var(--c-text-secondary)', fontWeight: 500 }}>
+                {roundLabel} 輪
+              </span>
+            </div>
+            {!open && (
+              <div style={{ fontSize: 13, color: 'var(--c-text-secondary)' }}>
+                ⏳ 距離開放: <strong style={{ color: 'var(--c-text)' }}>{countdown}</strong>
+              </div>
+            )}
+          </div>
+          {range && (
+            <div style={{ marginTop: 8, fontSize: 13, color: 'var(--c-text-secondary)' }}>
+              可預約範圍: <strong>{range.from}</strong> ~ <strong>{range.to}</strong>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    // ======================== MiniCalendar ========================
+    function MiniCalendar({ year, month, calData, selectedDates, bookableFrom, bookableTo, onDayClick, settings }) {
+      const maxPerDay = settings?.maxPerDay || 2;
+      const firstDay = new Date(year, month, 1);
+      const daysInMonth = new Date(year, month + 1, 0).getDate();
+      const startDow = firstDay.getDay(); // 0=Sun
+
+      const monthNames = ['1月','2月','3月','4月','5月','6月','7月','8月','9月','10月','11月','12月'];
+      const dayLabels = ['日','一','二','三','四','五','六'];
+
+      const cells = [];
+      // Leading blanks
+      for (let i = 0; i < startDow; i++) cells.push(null);
+      for (let d = 1; d <= daysInMonth; d++) cells.push(d);
+
+      const bFrom = bookableFrom ? parseDate(bookableFrom) : null;
+      const bTo = bookableTo ? parseDate(bookableTo) : null;
+
+      return (
+        <div style={{ minWidth: 220 }}>
+          <div style={{ textAlign: 'center', fontWeight: 600, fontSize: 14, marginBottom: 6 }}>
+            {year}年 {monthNames[month]}
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 2, marginBottom: 2 }}>
+            {dayLabels.map(l => (
+              <div key={l} style={{ textAlign: 'center', fontSize: 11, fontWeight: 600, color: 'var(--c-text-secondary)', padding: '2px 0' }}>{l}</div>
+            ))}
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 2 }}>
+            {cells.map((day, idx) => {
+              if (day === null) return <div key={'b' + idx} />;
+
+              const dateObj = new Date(year, month, day);
+              const dateStr = fmtDate(dateObj);
+              const count = calData[dateStr] || 0;
+              const inRange = bFrom && bTo && dateObj >= bFrom && dateObj <= bTo;
+              const isSelected = selectedDates.has(dateStr);
+
+              let cls = 'cal-day ';
+              if (!inRange) {
+                cls += 'cal-disabled';
+              } else if (count >= maxPerDay) {
+                cls += 'cal-full';
+              } else if (count === maxPerDay - 1) {
+                cls += 'cal-half';
+              } else {
+                cls += 'cal-available';
+              }
+              if (isSelected) cls += ' cal-selected';
+
+              // Determine range position for connected styling
+              if (isSelected && selectedDates.size > 1) {
+                const prev = fmtDate(addDays(dateObj, -1));
+                const next = fmtDate(addDays(dateObj, 1));
+                const hasPrev = selectedDates.has(prev);
+                const hasNext = selectedDates.has(next);
+                if (hasPrev && hasNext) cls += ' cal-range-mid';
+                else if (hasPrev && !hasNext) cls += ' cal-range-end';
+                else if (!hasPrev && hasNext) cls += ' cal-range-start';
+              }
+
+              return (
+                <div
+                  key={dateStr}
+                  className={cls}
+                  onClick={() => inRange && count < maxPerDay && onDayClick(dateStr)}
+                >
+                  {day}
+                  {inRange && count > 0 && (
+                    <span className="badge-count">{count}</span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      );
+    }
+
+    // ======================== CalendarGrid ========================
+    function CalendarGrid({ calData, selectedDates, bookableFrom, bookableTo, onDayClick, settings }) {
+      // Generate 6 months of calendars starting from bookableFrom
+      const months = useMemo(() => {
+        if (!bookableFrom) return [];
+        const start = parseDate(bookableFrom);
+        const result = [];
+        for (let i = 0; i < 7; i++) {
+          const d = new Date(start.getFullYear(), start.getMonth() + i, 1);
+          result.push({ year: d.getFullYear(), month: d.getMonth() });
+        }
+        return result;
+      }, [bookableFrom]);
+
+      return (
+        <div className="card p-4 mb-4 fade-in">
+          <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 12, flexWrap: 'wrap' }}>
+            <h2 style={{ fontSize: 16, fontWeight: 700 }}>選擇日期</h2>
+            <div style={{ display: 'flex', gap: 12, fontSize: 12 }}>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                <span style={{ width: 12, height: 12, borderRadius: 3, background: '#DCFCE7', border: '1px solid #BBF7D0' }} /> 可預約
+              </span>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                <span style={{ width: 12, height: 12, borderRadius: 3, background: '#FEF3C7', border: '1px solid #FDE68A' }} /> 剩1位
+              </span>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                <span style={{ width: 12, height: 12, borderRadius: 3, background: '#FEE2E2', border: '1px solid #FECACA' }} /> 已滿
+              </span>
+            </div>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 16 }}>
+            {months.map(m => (
+              <MiniCalendar
+                key={m.year + '-' + m.month}
+                year={m.year}
+                month={m.month}
+                calData={calData}
+                selectedDates={selectedDates}
+                bookableFrom={bookableFrom}
+                bookableTo={bookableTo}
+                onDayClick={onDayClick}
+                settings={settings}
+              />
+            ))}
+          </div>
+        </div>
+      );
+    }
+
+    // ======================== BookingPanel ========================
+    function BookingPanel({ staff, selectedName, onNameChange, selStart, selEnd, selDays,
+                            settings, personUsed, calData, gateOpen, onSubmit, submitting }) {
+      const minC = settings?.minConsecutive || 4;
+      const maxC = settings?.maxConsecutive || 7;
+      const maxPP = settings?.maxPerPerson || 14;
+      const maxPD = settings?.maxPerDay || 2;
+
+      const hasSelection = selStart && selEnd;
+      const lengthOk = hasSelection && selDays >= minC && selDays <= maxC;
+      const capOk = hasSelection && (personUsed + selDays <= maxPP);
+
+      // Check if any day in selection is full
+      let fullDays = [];
+      if (hasSelection) {
+        const dates = expandRange(selStart, selEnd);
+        fullDays = dates.filter(d => (calData[d] || 0) >= maxPD);
+      }
+      const availOk = fullDays.length === 0;
+
+      const canSubmit = gateOpen && hasSelection && lengthOk && capOk && availOk && selectedName && !submitting;
+
+      return (
+        <div className="card p-4 mb-4 fade-in">
+          <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 12 }}>預約</h2>
+
+          <div style={{ marginBottom: 12 }}>
+            <label style={{ fontSize: 13, fontWeight: 600, color: 'var(--c-text-secondary)', display: 'block', marginBottom: 4 }}>姓名</label>
+            <select
+              value={selectedName}
+              onChange={e => onNameChange(e.target.value)}
+              style={{ width: '100%', maxWidth: 260, padding: '8px 12px', borderRadius: 8, border: '1px solid var(--c-border)', fontSize: 14, fontFamily: 'inherit', background: '#fff' }}
+            >
+              <option value="">— 請選擇 —</option>
+              {staff.map(n => <option key={n} value={n}>{n}</option>)}
+            </select>
+          </div>
+
+          {hasSelection ? (
+            <div style={{ marginBottom: 12, padding: 12, borderRadius: 8, background: 'var(--c-selected)', border: '1px solid var(--c-selected-border)' }}>
+              <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--c-primary)' }}>
+                {selStart} ~ {selEnd}
+              </div>
+              <div style={{ fontSize: 13, marginTop: 4, color: 'var(--c-primary)' }}>
+                共 {selDays} 天
+              </div>
+            </div>
+          ) : (
+            <div style={{ marginBottom: 12, padding: 12, borderRadius: 8, background: '#F9FAFB', color: 'var(--c-text-secondary)', fontSize: 13 }}>
+              請在上方日曆點選開始日期與結束日期
+            </div>
+          )}
+
+          {/* Validation messages */}
+          <div style={{ marginBottom: 12, display: 'flex', flexDirection: 'column', gap: 4, fontSize: 13 }}>
+            {hasSelection && !lengthOk && (
+              <div style={{ color: 'var(--c-red)' }}>
+                ✗ 需連續 {minC}–{maxC} 天，目前 {selDays} 天
+              </div>
+            )}
+            {hasSelection && lengthOk && (
+              <div style={{ color: 'var(--c-green)' }}>
+                ✓ {selDays} 天 (符合 {minC}–{maxC} 天規定)
+              </div>
+            )}
+            {selectedName && (
+              <div style={{ color: personUsed + (selDays || 0) > maxPP ? 'var(--c-red)' : 'var(--c-text-secondary)' }}>
+                已預約 {personUsed} 天{hasSelection ? ` + 本次 ${selDays} 天 = ${personUsed + selDays} 天` : ''} / 上限 {maxPP} 天
+                {hasSelection && !capOk && ' ✗ 超過上限'}
+              </div>
+            )}
+            {hasSelection && !availOk && (
+              <div style={{ color: 'var(--c-red)' }}>
+                ✗ 以下日期已滿: {fullDays.join(', ')}
+              </div>
+            )}
+            {!gateOpen && (
+              <div style={{ color: 'var(--c-red)' }}>✗ 預約尚未開放</div>
+            )}
+          </div>
+
+          <button className="btn-primary" disabled={!canSubmit} onClick={onSubmit}>
+            {submitting ? '送出中...' : '送出預約'}
+          </button>
+        </div>
+      );
+    }
+
+    // ======================== ConfirmDialog ========================
+    function ConfirmDialog({ name, start, end, days, onConfirm, onCancel, submitting }) {
+      return (
+        <div className="modal-overlay" onClick={onCancel}>
+          <div className="card p-6 fade-in" style={{ maxWidth: 400, width: '90%' }} onClick={e => e.stopPropagation()}>
+            <h3 style={{ fontSize: 17, fontWeight: 700, marginBottom: 12, color: 'var(--c-red)' }}>
+              ⚠️ 確認送出
+            </h3>
+            <p style={{ fontSize: 14, marginBottom: 8 }}>
+              送出後<strong>無法取消</strong>，請確認以下資訊:
+            </p>
+            <div style={{ padding: 12, borderRadius: 8, background: '#F9FAFB', marginBottom: 16, fontSize: 14 }}>
+              <div><strong>姓名:</strong> {name}</div>
+              <div><strong>日期:</strong> {start} ~ {end}</div>
+              <div><strong>天數:</strong> {days} 天</div>
+            </div>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button
+                onClick={onCancel}
+                disabled={submitting}
+                style={{ padding: '8px 20px', borderRadius: 8, border: '1px solid var(--c-border)', background: '#fff', fontSize: 14, fontWeight: 500, cursor: 'pointer' }}
+              >
+                取消
+              </button>
+              <button className="btn-primary" onClick={onConfirm} disabled={submitting}>
+                {submitting ? '送出中...' : '確認送出'}
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // ======================== PublicLog ========================
+    function PublicLog({ bookings, loading, onRefresh }) {
+      const sorted = useMemo(() => {
+        if (!bookings) return [];
+        return [...bookings].sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+      }, [bookings]);
+
+      return (
+        <div className="card p-4 mb-4 fade-in">
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+            <h2 style={{ fontSize: 16, fontWeight: 700 }}>公開紀錄</h2>
+            <button
+              onClick={onRefresh}
+              disabled={loading}
+              style={{ fontSize: 13, padding: '4px 12px', borderRadius: 6, border: '1px solid var(--c-border)', background: '#fff', cursor: 'pointer', fontFamily: 'inherit' }}
+            >
+              {loading ? '載入中...' : '🔄 重新整理'}
+            </button>
+          </div>
+          {sorted.length === 0 ? (
+            <div style={{ fontSize: 13, color: 'var(--c-text-secondary)', padding: 16, textAlign: 'center' }}>
+              本輪尚無預約紀錄
+            </div>
+          ) : (
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                <thead>
+                  <tr style={{ borderBottom: '2px solid var(--c-border)' }}>
+                    <th style={{ textAlign: 'left', padding: '8px 12px', fontWeight: 600 }}>姓名</th>
+                    <th style={{ textAlign: 'left', padding: '8px 12px', fontWeight: 600 }}>日期區間</th>
+                    <th style={{ textAlign: 'center', padding: '8px 12px', fontWeight: 600 }}>天數</th>
+                    <th style={{ textAlign: 'left', padding: '8px 12px', fontWeight: 600 }}>提交時間</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sorted.map((b, i) => {
+                    const ts = b.timestamp ? new Date(b.timestamp) : null;
+                    const timeStr = ts ? `${String(ts.getHours()).padStart(2,'0')}:${String(ts.getMinutes()).padStart(2,'0')}:${String(ts.getSeconds()).padStart(2,'0')}` : '';
+                    return (
+                      <tr key={i} style={{ borderBottom: '1px solid var(--c-border)' }}>
+                        <td style={{ padding: '8px 12px' }}>{b.name}</td>
+                        <td style={{ padding: '8px 12px' }}>{b.startDate} ~ {b.endDate}</td>
+                        <td style={{ padding: '8px 12px', textAlign: 'center' }}>{b.days}</td>
+                        <td style={{ padding: '8px 12px', fontFamily: 'monospace', fontSize: 12 }}>{timeStr}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    // ======================== MyBookings ========================
+    function MyBookings({ bookings, selectedName, settings }) {
+      if (!selectedName) return null;
+      const maxPP = settings?.maxPerPerson || 14;
+      const mine = bookings ? bookings.filter(b => b.name === selectedName) : [];
+      const totalDays = mine.reduce((sum, b) => sum + b.days, 0);
+
+      return (
+        <div className="card p-4 mb-4 fade-in">
+          <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 8 }}>我的預約 — {selectedName}</h2>
+          <div style={{ fontSize: 14, marginBottom: 8, color: 'var(--c-text-secondary)' }}>
+            已使用 <strong style={{ color: 'var(--c-text)' }}>{totalDays}</strong> / {maxPP} 天
+          </div>
+          <div style={{ width: '100%', height: 8, borderRadius: 4, background: '#E5E7EB', overflow: 'hidden', marginBottom: 12 }}>
+            <div style={{ height: '100%', borderRadius: 4, background: totalDays >= maxPP ? 'var(--c-red)' : 'var(--c-primary)', width: Math.min(100, (totalDays / maxPP) * 100) + '%', transition: 'width 0.3s ease' }} />
+          </div>
+          {mine.length === 0 ? (
+            <div style={{ fontSize: 13, color: 'var(--c-text-secondary)' }}>尚無預約</div>
+          ) : (
+            mine.map((b, i) => (
+              <div key={i} style={{ padding: '8px 12px', borderRadius: 6, background: '#F9FAFB', marginBottom: 4, fontSize: 13, display: 'flex', justifyContent: 'space-between' }}>
+                <span>{b.startDate} ~ {b.endDate}</span>
+                <span style={{ fontWeight: 600 }}>{b.days} 天</span>
+              </div>
+            ))
+          )}
+        </div>
+      );
+    }
+
+    // ======================== App ========================
+    function App() {
+      const [loading, setLoading] = useState(true);
+      const [error, setError] = useState('');
+      const [status, setStatus] = useState(null);
+      const [bookings, setBookings] = useState([]);
+      const [staff, setStaff] = useState([]);
+      const [settings, setSettings] = useState(null);
+      const [calData, setCalData] = useState({});
+
+      const [selectedName, setSelectedName] = useState('');
+      const [selStart, setSelStart] = useState(null); // YYYY-MM-DD string
+      const [selEnd, setSelEnd] = useState(null);
+      const [showConfirm, setShowConfirm] = useState(false);
+      const [submitting, setSubmitting] = useState(false);
+      const [toast, setToast] = useState(null);
+
+      const refreshTimerRef = useRef(null);
+
+      // --- Check GAS_URL ---
+      const urlMissing = !GAS_URL;
+
+      // --- Load all data ---
+      const loadAll = useCallback(async () => {
+        if (urlMissing) { setLoading(false); return; }
+        try {
+          setLoading(true);
+          const data = await gasGet('getAll');
+          if (data.error) throw new Error(data.error);
+          setStatus(data.status);
+          setBookings(data.bookings);
+          setStaff(data.staff);
+          setSettings(data.settings);
+          setCalData(data.calendarData);
+          setError('');
+        } catch (err) {
+          setError('載入失敗: ' + err.message);
+        } finally {
+          setLoading(false);
+        }
+      }, [urlMissing]);
+
+      useEffect(() => {
+        loadAll();
+        // Auto-refresh every 15 seconds
+        refreshTimerRef.current = setInterval(loadAll, 15000);
+        return () => clearInterval(refreshTimerRef.current);
+      }, [loadAll]);
+
+      // --- Selection ---
+      const selectedDates = useMemo(() => {
+        const set = new Set();
+        if (selStart && selEnd) {
+          expandRange(selStart, selEnd).forEach(d => set.add(d));
+        } else if (selStart) {
+          set.add(selStart);
+        }
+        return set;
+      }, [selStart, selEnd]);
+
+      const selDays = selStart && selEnd ? daysBetween(parseDate(selStart), parseDate(selEnd)) : 0;
+
+      const personUsed = useMemo(() => {
+        if (!selectedName || !bookings) return 0;
+        return bookings.filter(b => b.name === selectedName).reduce((s, b) => s + b.days, 0);
+      }, [selectedName, bookings]);
+
+      const handleDayClick = useCallback((dateStr) => {
+        if (!selStart || selEnd) {
+          // Start new selection
+          setSelStart(dateStr);
+          setSelEnd(null);
+        } else {
+          // Set end
+          const s = parseDate(selStart);
+          const e = parseDate(dateStr);
+          if (e < s) {
+            // Clicked before start — make this the new start
+            setSelStart(dateStr);
+            setSelEnd(null);
+          } else if (sameDay(s, e)) {
+            // Same day — reset
+            setSelStart(null);
+            setSelEnd(null);
+          } else {
+            setSelEnd(dateStr);
+          }
+        }
+      }, [selStart, selEnd]);
+
+      // --- Submit ---
+      const handleSubmitClick = () => setShowConfirm(true);
+      const handleConfirm = async () => {
+        try {
+          setSubmitting(true);
+          const result = await gasPost({
+            action: 'submitBooking',
+            name: selectedName,
+            startDate: selStart,
+            endDate: selEnd,
+          });
+          if (result.error) {
+            setToast({ type: 'error', msg: result.error });
+          } else {
+            setToast({ type: 'success', msg: result.message || '預約成功！' });
+            setSelStart(null);
+            setSelEnd(null);
+            await loadAll();
+          }
+        } catch (err) {
+          setToast({ type: 'error', msg: '送出失敗: ' + err.message });
+        } finally {
+          setSubmitting(false);
+          setShowConfirm(false);
+        }
+      };
+
+      // Auto-dismiss toast
+      useEffect(() => {
+        if (!toast) return;
+        const id = setTimeout(() => setToast(null), 4000);
+        return () => clearTimeout(id);
+      }, [toast]);
+
+      // --- No URL configured ---
+      if (urlMissing) {
+        return (
+          <div style={{ maxWidth: 600, margin: '80px auto', padding: 24 }}>
+            <div className="card p-6" style={{ textAlign: 'center' }}>
+              <h1 style={{ fontSize: 22, fontWeight: 700, marginBottom: 12 }}>預假系統</h1>
+              <p style={{ color: 'var(--c-text-secondary)', fontSize: 14, marginBottom: 16 }}>
+                請先完成設定：在此 HTML 檔案中找到 <code style={{ background: '#F3F4F6', padding: '2px 6px', borderRadius: 4 }}>GAS_URL</code> 變數，貼上你部署的 Google Apps Script Web App 網址。
+              </p>
+              <div style={{ background: '#F9FAFB', padding: 12, borderRadius: 8, fontFamily: 'monospace', fontSize: 13 }}>
+                const GAS_URL = 'https://script.google.com/macros/s/xxxxx/exec';
+              </div>
+            </div>
+          </div>
+        );
+      }
+
+      return (
+        <div style={{ maxWidth: 900, margin: '0 auto', padding: '16px 12px 60px' }}>
+          {/* Toast */}
+          {toast && (
+            <div style={{
+              position: 'fixed', top: 16, left: '50%', transform: 'translateX(-50%)',
+              padding: '10px 24px', borderRadius: 8, fontSize: 14, fontWeight: 600, zIndex: 100,
+              background: toast.type === 'success' ? '#DCFCE7' : '#FEE2E2',
+              color: toast.type === 'success' ? '#15803D' : '#991B1B',
+              boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+            }} className="fade-in">
+              {toast.type === 'success' ? '✓ ' : '✗ '}{toast.msg}
+            </div>
+          )}
+
+          {error && (
+            <div style={{ padding: 12, borderRadius: 8, background: '#FEE2E2', color: '#991B1B', fontSize: 13, marginBottom: 12 }}>
+              {error}
+            </div>
+          )}
+
+          <StatusBar status={status} loading={loading} />
+
+          <CalendarGrid
+            calData={calData}
+            selectedDates={selectedDates}
+            bookableFrom={status?.bookableRange?.from}
+            bookableTo={status?.bookableRange?.to}
+            onDayClick={handleDayClick}
+            settings={settings}
+          />
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 16 }}>
+            <BookingPanel
+              staff={staff}
+              selectedName={selectedName}
+              onNameChange={setSelectedName}
+              selStart={selStart}
+              selEnd={selEnd}
+              selDays={selDays}
+              settings={settings}
+              personUsed={personUsed}
+              calData={calData}
+              gateOpen={status?.gateOpen}
+              onSubmit={handleSubmitClick}
+              submitting={submitting}
+            />
+            <MyBookings bookings={bookings} selectedName={selectedName} settings={settings} />
+          </div>
+
+          <PublicLog bookings={bookings} loading={loading} onRefresh={loadAll} />
+
+          {showConfirm && (
+            <ConfirmDialog
+              name={selectedName}
+              start={selStart}
+              end={selEnd}
+              days={selDays}
+              onConfirm={handleConfirm}
+              onCancel={() => setShowConfirm(false)}
+              submitting={submitting}
+            />
+          )}
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>
