@@ -343,7 +343,7 @@ begin
   end if;
 
   -- 6c. Per-day capacity check via GIST range overlap.
-  with overlaps as (
+  with overlap_rows as (
     select start_date, end_date
       from public.bookings
      where round = v_current_round
@@ -357,7 +357,7 @@ begin
              least(end_date, p_end),
              '1 day'::interval
            )::date as d
-      from overlaps
+      from overlap_rows
   ),
   counts as (
     select d, count(*)::int as n
