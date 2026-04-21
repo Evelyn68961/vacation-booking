@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <title>預假系統</title>
+
+  <defs>
+    <clipPath id="bgClip">
+      <rect x="0" y="0" width="512" height="512" rx="102"/>
+    </clipPath>
+  </defs>
+
+  <g clip-path="url(#bgClip)">
+    <rect x="0" y="0" width="512" height="512" fill="#0891b2"/>
+
+    <rect x="76" y="132" width="360" height="340" rx="20" fill="#faf5ff"/>
+
+    <rect x="76" y="132" width="360" height="72" fill="#ef4444"/>
+
+    <text x="256" y="182"
+          font-family="-apple-system, 'Segoe UI', 'Noto Sans TC', sans-serif"
+          font-size="32" font-weight="600"
+          fill="#ffffff" text-anchor="middle">SAT · 20:00</text>
+
+    <rect x="140" y="112" width="14" height="34" rx="5" fill="#1e293b"/>
+    <rect x="358" y="112" width="14" height="34" rx="5" fill="#1e293b"/>
+
+    <rect x="174" y="234" width="164" height="12" rx="3" fill="#1e293b"/>
+    <path d="M 178 246 L 334 246 L 264 354 L 248 354 Z" fill="#fbbf24"/>
+    <path d="M 178 246 L 334 246 L 264 354 L 248 354 Z"
+          fill="none" stroke="#1e293b" stroke-width="5" stroke-linejoin="round"/>
+    <rect x="251" y="354" width="10" height="36" fill="#fbbf24"/>
+    <path d="M 248 354 L 264 354 L 334 460 L 178 460 Z"
+          fill="none" stroke="#1e293b" stroke-width="5" stroke-linejoin="round"/>
+    <path d="M 190 460 L 322 460 L 306 426 Q 256 408 206 426 Z" fill="#fbbf24"/>
+    <rect x="174" y="460" width="164" height="12" rx="3" fill="#1e293b"/>
+
+    <rect x="56" y="74" width="22" height="52" fill="#ffffff"/>
+    <rect x="434" y="74" width="22" height="52" fill="#ffffff"/>
+    <rect x="48" y="74" width="416" height="26" rx="4" fill="#ffffff"/>
+  </g>
+</svg>
