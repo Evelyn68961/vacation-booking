@@ -236,7 +236,7 @@ All callers (`submit_booking`, frontend countdown, realtime filter) must treat `
 
 **Critical rule (from SUPABASE_RLS_LESSONS.md):** Use `is_admin()` as `SECURITY DEFINER` function, never inline `EXISTS(SELECT FROM staff)` in policy → infinite recursion.
 
-**Privacy note on `authenticated` SELECT:** any Google-logged-in user — including random outsiders who happen to click the login button — will see the full staff table and every booking. Work IDs are treated as public info, so this is acceptable for v1. If it ever stops being acceptable, tighten `staff` SELECT to `auth.jwt() ->> 'email' IN (SELECT email FROM staff WHERE active)` and route an anonymous `/register` landing through a `SECURITY DEFINER` lookup instead.
+**Privacy note on `authenticated` SELECT:** any Google-logged-in user — including random outsiders who happen to click the login button — will see the full staff table and every booking. Work IDs are treated as public info, so this is acceptable for the initial launch. If it ever stops being acceptable, tighten `staff` SELECT to `auth.jwt() ->> 'email' IN (SELECT email FROM staff WHERE active)` and route an anonymous `/register` landing through a `SECURITY DEFINER` lookup instead.
 
 ---
 
@@ -348,7 +348,8 @@ supabase
 - [ ] **Unit-test `get_gate_info()`** across all 7 possible `extract(dow from month_1st)` values — catches the Saturday-offset arithmetic regressing silently
 - [ ] **Load test:** 60 parallel `submit_booking` calls via k6 or a Node script — verify zero oversells, p95 < 1s, no deadlocks
 - [ ] End-to-end smoke test with 2 real accounts for UX flow
-- [ ] Pre-announce v1 fallback URL in the registration email (named owner: Evelyn decides on flip)
+- [ ] **Dress rehearsal on staging** (Thu or Fri before May 2) — fake gate time set 10 min ahead, Evelyn + 1–2 volunteers exercise the full flow, including a deliberate oversell attempt
+- [ ] Verify Vercel keeps last-green deploy reachable for one-click rollback if the gate-day deploy regresses
 - [ ] Announce to team, registration open
 
 ### Phase 2 — Polish (after May 2 round)
@@ -378,17 +379,19 @@ supabase
 | Timezone drift (server UTC vs Taipei) | All gate math + `submitted_at` rendering explicitly `AT TIME ZONE 'Asia/Taipei'` |
 | Google OAuth down at gate time | Session tokens last 30 days, so already-logged-in users unaffected |
 | Someone registers with wrong work ID | Admin can unlink via Supabase dashboard |
-| v2 fails at gate time | v1 fallback URL pre-announced in registration email; Evelyn owns the flip decision, 60-second SLA |
+| v2 fails at gate time | No external fallback — mitigate upstream: staging dress rehearsal Thu/Fri, Vercel instant rollback to last-green deploy, Supabase monitoring open during gate window. If everything fails, Evelyn collects bookings manually and backfills via admin tools after the fact. |
 
 ---
 
-## Migration from v1
+## Launch Posture
 
-**Data:** None. Start fresh — the May 2 round is a clean slate in v2.
+**This is a greenfield ship with no external fallback.** Only the v2 URL will be announced — there is no prior system to revert to if things go wrong at 20:00 on May 2.
 
-**Users:** All 60 pharmacists re-onboard via Google login + work ID. One-time cost.
+**Data:** Start fresh. May 2 is the first real round; no historical bookings to migrate.
 
-**v1 retirement:** After May 2 round closes successfully, archive v1 HTML + GAS project. Keep Sheet as historical record.
+**Users:** All ~60 pharmacists onboard for the first time via Google login + work ID. One-time cost.
+
+**Legacy reference:** the local GAS/HTML files are useful as code reference (date utils, gate algorithm, UI layout) but are not a deployed system and must not surface in any stakeholder-facing material.
 
 ---
 
@@ -416,7 +419,7 @@ supabase
 - `staff_template.csv` — for boss to fill in
 - Vite React project (see Frontend Structure above)
 - `loadtest/` — k6 or Node script simulating 60 concurrent `submit_booking` calls
-- `README.md` — setup + deployment guide, including the v1 fallback URL and flip procedure
+- `README.md` — setup + deployment guide, including the Vercel rollback procedure and gate-day monitoring checklist
 
 ### Phase 2
 - Admin dashboard components
