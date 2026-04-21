@@ -5,7 +5,7 @@
 Replace the GAS-based vacation pre-booking system with a scalable web app that handles 60+ concurrent users. Same business rules, new stack.
 
 **Repo:** `Evelyn68961/vacation-system-v2` (new)
-**Deploy:** Vercel (auto-deploy on push to `dev` branch)
+**Deploy:** Vercel (auto-deploy on push to `main`)
 **Language:** Traditional Chinese (default)
 
 ---
