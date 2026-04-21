@@ -1,73 +1,71 @@
-# 預假系統 — 設定說明
+# Vacation Booking System v2
 
-## 快速設定 (3 步驟)
+Pharmacist vacation pre-booking system with monthly gate opening, realtime calendar, annual point budget, and Google sign-in.
 
-### Step 1: 建立 Google Sheet
+## Stack
 
-1. 開新的 Google Sheet
-2. 建立 3 個分頁 (tab)，名稱必須完全一致：
+- **Frontend:** Vite + React + PWA ([vite-plugin-pwa](https://vite-pwa-org.netlify.app/))
+- **Backend:** Supabase Postgres (RLS + RPC + Realtime)
+- **Auth:** Supabase Google OAuth
+- **Hosting:** Vercel (auto-deploy on push to `main`)
 
-**分頁「Bookings」** — 第一列標題：
-| A | B | C | D | E | F |
-|---|---|---|---|---|---|
-| 姓名 | 開始日期 | 結束日期 | 天數 | 提交時間 | 輪次 |
+## Status
 
-**分頁「Staff」** — 第一列標題 + 人員名單：
-| A |
-|---|
-| 姓名 |
-| 王小明 |
-| 李小華 |
-| 張大衛 |
-| ... |
+Phase 1 in development. Target launch: 2026-05-02 (first real booking round). See [VACATION_SYSTEM_V2_PLAN.md](VACATION_SYSTEM_V2_PLAN.md) for the full plan.
 
-**分頁「Settings」** — 第一列標題 + 預設值：
-| A | B |
+## First-time setup
+
+Follow [SUPABASE_SETUP.md](SUPABASE_SETUP.md) end to end (~30 min). When you're done, `.env` will have the Supabase URL + anon key and you can run `npm run dev`.
+
+## Dev commands
+
+```bash
+npm install          # Install dependencies (first time only)
+npm run dev          # Start dev server at http://localhost:5173
+npm run build        # Production build → dist/
+npm run preview      # Serve the production build locally
+```
+
+## Project structure
+
+```
+src/
+├── App.jsx                 # Auth gate + route switching
+├── main.jsx                # Vite entry
+├── index.css               # Design tokens + component styles
+├── lib/
+│   ├── supabase.js         # Supabase client
+│   └── dateUtils.js        # Date + Asia/Taipei timezone helpers
+├── hooks/                  # useAuth, useGateInfo, useBookings, ...
+├── components/             # StatusBar, MiniCalendar, BookingPanel, ...
+└── pages/                  # BookingPage, RegisterPage
+
+supabase/
+├── migrations/0001_init.sql    # Schema + RLS + RPCs (one-time apply)
+└── tests/                      # SQL test scripts
+
+staff_template.csv          # CSV template for importing pharmacist roster
+```
+
+## Documentation
+
+| Doc | Purpose |
 |---|---|
-| 設定項 | 值 |
-| 每日上限 | 2 |
-| 每人上限 | 14 |
-| 最少天數 | 4 |
-| 最多天數 | 7 |
+| [VACATION_SYSTEM_V2_PLAN.md](VACATION_SYSTEM_V2_PLAN.md) | System design, business rules, database schema |
+| [ANNUAL_POINTS_PLAN.md](ANNUAL_POINTS_PLAN.md) | Annual points + auto-approval (boss request) |
+| [SUPABASE_SETUP.md](SUPABASE_SETUP.md) | Zero-to-production setup walkthrough |
 
-### Step 2: 部署 Google Apps Script
+## Business rules (summary)
 
-1. 在 Google Sheet 上方選單 → **擴充功能** → **Apps Script**
-2. 刪除預設的 `function myFunction()` 程式碼
-3. 將 `gas_code.js` 的全部內容貼上
-4. 點擊上方 **部署** → **新增部署作業**
-5. 類型選 **網頁應用程式**
-6. 執行身分: **我 (你的帳號)**
-7. 誰可以存取: **所有人**
-8. 點 **部署**，複製產生的網址 (以 `/exec` 結尾)
+- Gate opens at 20:00 on the first Saturday of every month (Asia/Taipei)
+- Bookable window: gate day → 6 months ahead
+- Each submission: one consecutive block of 4–7 days
+- Max 14 days per person per round
+- Max 2 people per day
+- **12 points per person per year**, 1 booking = 1 point (counted by start-date year)
+- Auto-approved on submit; no cancellation
+- Priority by server-side timestamp
 
-### Step 3: 設定前端
+## Legacy files
 
-1. 打開 `vacation_booking.html`
-2. 找到這一行 (約第 87 行)：
-   ```
-   const GAS_URL = '';
-   ```
-3. 把剛才複製的 GAS 網址貼進去：
-   ```
-   const GAS_URL = 'https://script.google.com/macros/s/AKfycbx2F6_qYK2EkiLSL5CKsDgSq5ONBxMv6rhesg6MpTIB0NsOweUuIjh5T77hL_4w8OvK/exec';
-   ```
-4. 存檔，用瀏覽器打開 HTML 檔案即可使用
-
----
-
-## 測試建議
-
-- **先用 Sheet 副本測試**，不要直接用正式資料
-- 測試時可以暫時修改 GAS 的 `getGateInfo()` 讓 gate 立刻開放：
-  ```javascript
-  // 在 getGateInfo() 開頭加這行 (測試完記得刪除)
-  return { gateOpen: true, gateTime: new Date().toISOString(), currentRound: '2026-05', bookableRange: { from: '2026-05-01', to: '2026-11-01' } };
-  ```
-
-## 注意事項
-
-- 所有時間判斷以 GAS 伺服器時間為準 (不依賴使用者電腦時間)
-- 預約一旦送出即無法取消 (by design)
-- Settings 分頁可隨時調整規則，立即生效
-- 每次修改 GAS 程式碼後需要重新部署 (部署 → 管理部署作業 → 編輯 → 版本選「新版本」→ 部署)
+`gas_code.js` and `vacation_booking.html` are the previous GAS-based implementation, kept only as code reference (date utilities, UI layout). Not maintained. Not a deployed system.
