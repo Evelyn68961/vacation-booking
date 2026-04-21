@@ -1,0 +1,200 @@
+:root {
+  --c-bg: #F7F8FA;
+  --c-surface: #FFFFFF;
+  --c-primary: #2563EB;
+  --c-primary-dark: #1D4ED8;
+  --c-green: #16A34A;
+  --c-amber: #D97706;
+  --c-red: #DC2626;
+  --c-gray: #9CA3AF;
+  --c-text: #1F2937;
+  --c-text-secondary: #6B7280;
+  --c-border: #E5E7EB;
+  --c-selected: #DBEAFE;
+  --c-selected-border: #60A5FA;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: 'Noto Sans TC', system-ui, -apple-system, sans-serif;
+  background: var(--c-bg);
+  color: var(--c-text);
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+}
+
+button { font-family: inherit; }
+
+/* ---------- Utility classes (subset of Tailwind used by v1) ---------- */
+
+.p-3 { padding: 12px; }
+.p-4 { padding: 16px; }
+.p-6 { padding: 24px; }
+.mb-2 { margin-bottom: 8px; }
+.mb-4 { margin-bottom: 16px; }
+
+/* ---------- Card ---------- */
+
+.card {
+  background: var(--c-surface);
+  border-radius: 12px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+  border: 1px solid var(--c-border);
+}
+
+/* ---------- Buttons ---------- */
+
+.btn-primary {
+  background: var(--c-primary);
+  color: #fff;
+  padding: 10px 24px;
+  border-radius: 8px;
+  border: none;
+  font-weight: 600;
+  font-size: 15px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.btn-primary:hover:not(:disabled) { background: var(--c-primary-dark); }
+.btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.btn-secondary {
+  padding: 8px 20px;
+  border-radius: 8px;
+  border: 1px solid var(--c-border);
+  background: #fff;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.btn-secondary:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* ---------- Calendar cells ---------- */
+
+.cal-day {
+  width: 100%;
+  aspect-ratio: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  position: relative;
+  font-weight: 500;
+}
+.cal-day:hover:not(.cal-disabled):not(.cal-full) {
+  box-shadow: 0 0 0 2px var(--c-primary);
+}
+.cal-available { background: #DCFCE7; color: #15803D; }
+.cal-half      { background: #FEF3C7; color: #92400E; }
+.cal-full      { background: #FEE2E2; color: #991B1B; cursor: not-allowed; }
+.cal-disabled  { background: #F3F4F6; color: #D1D5DB; cursor: default; }
+.cal-selected  {
+  background: var(--c-selected) !important;
+  color: var(--c-primary) !important;
+  box-shadow: 0 0 0 2px var(--c-selected-border);
+  z-index: 1;
+}
+.cal-range-start { border-radius: 6px 0 0 6px; }
+.cal-range-end   { border-radius: 0 6px 6px 0; }
+.cal-range-mid   { border-radius: 0; }
+
+.badge-count {
+  position: absolute;
+  top: 2px;
+  right: 3px;
+  font-size: 9px;
+  font-weight: 700;
+  background: rgba(0,0,0,0.12);
+  border-radius: 50%;
+  width: 14px;
+  height: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ---------- Status dot ---------- */
+
+.status-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  display: inline-block;
+}
+.status-open   { background: var(--c-green); box-shadow: 0 0 6px rgba(22,163,74,0.5); }
+.status-closed { background: var(--c-red);   box-shadow: 0 0 6px rgba(220,38,38,0.5); }
+
+/* ---------- Animations / loading ---------- */
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.fade-in { animation: fadeIn 0.3s ease forwards; }
+
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .4; } }
+.skeleton {
+  animation: pulse 1.5s ease-in-out infinite;
+  background: #E5E7EB;
+  border-radius: 6px;
+}
+
+/* ---------- Modal ---------- */
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 50;
+}
+
+/* ---------- Toast ---------- */
+
+.toast {
+  position: fixed;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 10px 24px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  z-index: 100;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+}
+.toast-success { background: #DCFCE7; color: #15803D; }
+.toast-error   { background: #FEE2E2; color: #991B1B; }
+
+/* ---------- Inputs ---------- */
+
+.input {
+  width: 100%;
+  max-width: 260px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--c-border);
+  font-size: 14px;
+  font-family: inherit;
+  background: #fff;
+}
+
+/* ---------- Connection banner ---------- */
+
+.conn-banner {
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: #FEF3C7;
+  color: #92400E;
+  font-size: 13px;
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
