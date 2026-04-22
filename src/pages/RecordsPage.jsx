@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase.js'
 import { fmtTaipeiDateTime } from '../lib/dateUtils.js'
+import { useIsMobile } from '../hooks/useMediaQuery.js'
 
 // Historical booking browser. Any registered user can view — booking rows are
 // already readable via RLS (same data shown in PublicLog for the current round).
@@ -12,6 +13,7 @@ export default function RecordsPage({ staff }) {
   const [bookings, setBookings] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const isMobile = useIsMobile()
 
   useEffect(() => {
     supabase
@@ -126,6 +128,51 @@ export default function RecordsPage({ staff }) {
           <div style={{ fontSize: 13, color: 'var(--c-text-secondary)', padding: 24, textAlign: 'center' }}>
             尚無紀錄
           </div>
+        ) : isMobile ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {bookings.map((b) => {
+              const isMine = b.staff_work_id === staff.work_id
+              return (
+                <div
+                  key={b.id}
+                  style={{
+                    border: '1px solid var(--c-border)',
+                    borderRadius: 8,
+                    padding: 12,
+                    fontSize: 13,
+                    background: isMine ? 'var(--c-selected)' : 'transparent',
+                  }}
+                >
+                  <div style={{
+                    display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8,
+                  }}>
+                    <div>
+                      <strong style={{ fontSize: 14 }}>{b.name}</strong>
+                      <span style={{
+                        marginLeft: 6, color: 'var(--c-text-secondary)',
+                        fontFamily: 'monospace', fontSize: 12,
+                      }}>
+                        {b.staff_work_id}
+                      </span>
+                    </div>
+                    <span style={{ color: 'var(--c-text-secondary)' }}>{b.days} 天</span>
+                  </div>
+                  <div style={{ marginTop: 4, whiteSpace: 'nowrap' }}>
+                    {b.start_date} ~ {b.end_date}
+                  </div>
+                  <div style={{
+                    marginTop: 4, color: 'var(--c-text-secondary)',
+                    fontFamily: 'monospace', fontSize: 12,
+                    display: 'flex', gap: 8, flexWrap: 'wrap',
+                  }}>
+                    <span>{b.round}</span>
+                    <span>·</span>
+                    <span>{fmtTaipeiDateTime(b.submitted_at)}</span>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
         ) : (
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
@@ -150,16 +197,16 @@ export default function RecordsPage({ staff }) {
                         background: isMine ? 'var(--c-selected)' : 'transparent',
                       }}
                     >
-                      <td style={{ padding: '8px 12px', fontFamily: 'monospace' }}>{b.round}</td>
+                      <td style={{ padding: '8px 12px', fontFamily: 'monospace', whiteSpace: 'nowrap' }}>{b.round}</td>
                       <td style={{ padding: '8px 12px' }}>{b.name}</td>
                       <td style={{ padding: '8px 12px', fontFamily: 'monospace', fontSize: 12 }}>
                         {b.staff_work_id}
                       </td>
-                      <td style={{ padding: '8px 12px' }}>
+                      <td style={{ padding: '8px 12px', whiteSpace: 'nowrap' }}>
                         {b.start_date} ~ {b.end_date}
                       </td>
                       <td style={{ padding: '8px 12px', textAlign: 'center' }}>{b.days}</td>
-                      <td style={{ padding: '8px 12px', fontFamily: 'monospace', fontSize: 12 }}>
+                      <td style={{ padding: '8px 12px', fontFamily: 'monospace', fontSize: 12, whiteSpace: 'nowrap' }}>
                         {fmtTaipeiDateTime(b.submitted_at)}
                       </td>
                     </tr>

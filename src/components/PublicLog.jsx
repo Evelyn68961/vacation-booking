@@ -1,6 +1,9 @@
 import { fmtTaipeiTime } from '../lib/dateUtils.js'
+import { useIsMobile } from '../hooks/useMediaQuery.js'
 
 export default function PublicLog({ bookings, status, onRefresh }) {
+  const isMobile = useIsMobile()
+
   return (
     <div className="card p-4 mb-4 fade-in">
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
@@ -27,6 +30,36 @@ export default function PublicLog({ bookings, status, onRefresh }) {
         <div style={{ fontSize: 13, color: 'var(--c-text-secondary)', padding: 16, textAlign: 'center' }}>
           本輪尚無預約紀錄
         </div>
+      ) : isMobile ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {bookings.map((b) => (
+            <div
+              key={b.id}
+              style={{
+                border: '1px solid var(--c-border)',
+                borderRadius: 8,
+                padding: 12,
+                fontSize: 13,
+              }}
+            >
+              <div style={{
+                display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8,
+              }}>
+                <strong style={{ fontSize: 14 }}>{b.name}</strong>
+                <span style={{ color: 'var(--c-text-secondary)' }}>{b.days} 天</span>
+              </div>
+              <div style={{ marginTop: 4, whiteSpace: 'nowrap' }}>
+                {b.start_date} ~ {b.end_date}
+              </div>
+              <div style={{
+                marginTop: 4, color: 'var(--c-text-secondary)',
+                fontFamily: 'monospace', fontSize: 12,
+              }}>
+                {fmtTaipeiTime(b.submitted_at)}
+              </div>
+            </div>
+          ))}
+        </div>
       ) : (
         <div style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
@@ -42,7 +75,7 @@ export default function PublicLog({ bookings, status, onRefresh }) {
               {bookings.map((b) => (
                 <tr key={b.id} style={{ borderBottom: '1px solid var(--c-border)' }}>
                   <td style={{ padding: '8px 12px' }}>{b.name}</td>
-                  <td style={{ padding: '8px 12px' }}>{b.start_date} ~ {b.end_date}</td>
+                  <td style={{ padding: '8px 12px', whiteSpace: 'nowrap' }}>{b.start_date} ~ {b.end_date}</td>
                   <td style={{ padding: '8px 12px', textAlign: 'center' }}>{b.days}</td>
                   <td style={{ padding: '8px 12px', fontFamily: 'monospace', fontSize: 12 }}>
                     {fmtTaipeiTime(b.submitted_at)}
