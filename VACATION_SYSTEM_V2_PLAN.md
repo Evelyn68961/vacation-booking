@@ -44,7 +44,7 @@ Replace the GAS-based vacation pre-booking system with a scalable web app that h
 
 - Gate opens 8:00 PM first Saturday of each month
 - Bookable window: gate day → 6 months ahead
-- Each submission: 1 consecutive block of 4–7 days
+- Each submission: 1 consecutive block of 4–10 days
 - Multiple blocks per person allowed
 - Max 14 days per person per round
 - Max 2 people per day
@@ -129,7 +129,7 @@ Indexes:
 | key | text PK |
 | value | text NOT NULL |
 
-Default rows: `max_per_day=2`, `max_per_person=14`, `min_consecutive=4`, `max_consecutive=7`
+Default rows: `max_per_day=2`, `max_per_person=14`, `min_consecutive=4`, `max_consecutive=10`
 
 ### `rounds` (future — for Phase 2 history view)
 | Column | Type |

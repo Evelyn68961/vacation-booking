@@ -5,7 +5,7 @@ Addition to v2 plan, at boss's request. Targets same May 2 launch as Phase 1.
 ## Business rules (locked)
 
 - Each pharmacist has **12 points per calendar year**.
-- **1 booking block = 1 point**, regardless of day count (4–7 days).
+- **1 booking block = 1 point**, regardless of day count (4–10 days).
 - Year is determined by the **start date** of the block.
   - Example: a booking 2026-12-28 → 2027-01-03 spends a **2026** point.
 - Auto-approval: when all prerequisites pass, the booking is saved as `approved = true` in one atomic transaction. No manual approval step.
@@ -18,7 +18,7 @@ A booking is auto-approved iff **all** of the following pass, in order, inside o
 
 1. Caller authenticated via Google OAuth and email linked to active staff row
 2. Gate open for current round
-3. Day count within [min_consecutive, max_consecutive] = [4, 7]
+3. Day count within [min_consecutive, max_consecutive] = [4, 10]
 4. Start/end within current round's bookable range
 5. **Per-user round cap:** existing days this round + new days ≤ max_per_person (14)
 6. **Per-user annual points:** approved bookings in `year(start_date)` < annual_points_per_person (12) *(new)*

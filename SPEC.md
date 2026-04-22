@@ -26,11 +26,24 @@ time and capacity checks.
 |---|---|
 | Frontend | Vite + React 18, React Router 6, `@supabase/supabase-js` |
 | PWA | [`vite-plugin-pwa`](vite.config.js) with `autoUpdate` |
-| Backend | Supabase Postgres — schema in [supabase/migrations/0001_init.sql](supabase/migrations/0001_init.sql) |
+| Backend | Supabase Postgres — schema in [supabase/migrations/](supabase/migrations/), applied in numeric order |
 | Styling | Hand-rolled CSS tokens in [src/index.css](src/index.css) |
 | Fonts | Noto Sans TC from Google Fonts, wired in [index.html](index.html) |
 
 Entry points: [index.html](index.html) → [src/main.jsx](src/main.jsx) → [src/App.jsx](src/App.jsx).
+
+### Migrations
+
+Applied in order; each is a standalone transaction.
+
+| File | Purpose |
+|---|---|
+| [0001_init.sql](supabase/migrations/0001_init.sql) | Tables, indexes, RLS, core RPCs (`get_gate_info`, `submit_booking`, `register_staff`, `get_calendar_data`, `is_admin`, `first_saturday_of`). |
+| [0002_gate_override.sql](supabase/migrations/0002_gate_override.sql) | Admin-controlled gate override — override-aware `get_gate_info`, plus `set_gate_override`/`clear_gate_override` RPCs. |
+| [0003_extend_range_to_sunday.sql](supabase/migrations/0003_extend_range_to_sunday.sql) | `range_to` snaps forward to the next Sunday on/after `gate_date + 6 months`. Adds `next_sunday_on_or_after` helper. |
+| [0004_test_mode.sql](supabase/migrations/0004_test_mode.sql) | `start_test_mode`/`end_test_mode` RPCs and `test_active_round` tracker. Test bookings carry a `TEST-YYYYMMDD-HHMI` round tag; ending test mode exact-matches that tag and deletes only test rows. |
+| [0005_fix_submit_booking_variable_conflict.sql](supabase/migrations/0005_fix_submit_booking_variable_conflict.sql) | Bug fix — renames PL/pgSQL loop variable `d` → `v_day` in `submit_booking` to resolve "column reference 'd' is ambiguous" against the CTE column `d` (PL/pgSQL default `variable_conflict = error`). |
+| [0006_max_consecutive_10.sql](supabase/migrations/0006_max_consecutive_10.sql) | Raises `max_consecutive` from 7 → 10 in `settings`. No function change — `submit_booking` reads from `settings` at call time. |
 
 Environment variables (see [.env.example](.env.example)):
 - `VITE_SUPABASE_URL`
@@ -75,13 +88,20 @@ Indexes: `(round)`, `(staff_work_id, round)`, GIST on `daterange(start_date, end
 #### `settings`
 Key/value text table, seeded at migration time:
 
-| Key | Value |
-|---|---|
-| `max_per_day` | `2` |
-| `max_per_person` | `14` |
-| `min_consecutive` | `4` |
-| `max_consecutive` | `10` (raised from seed default `7` by migration 0006) |
-| `annual_points_per_person` | `12` |
+| Key | Value | Introduced |
+|---|---|---|
+| `max_per_day` | `2` | 0001 |
+| `max_per_person` | `14` | 0001 |
+| `min_consecutive` | `4` | 0001 |
+| `max_consecutive` | `10` (raised from seed default `7` by migration 0006) | 0001 / 0006 |
+| `annual_points_per_person` | `12` | 0001 |
+| `gate_override_time` | `''` (empty = inactive) | 0002 |
+| `gate_override_range_from` | `''` | 0002 |
+| `gate_override_range_to` | `''` | 0002 |
+| `gate_override_round` | `''` | 0002 |
+| `test_active_round` | `''` (empty = no test running) | 0004 |
+
+Keys other than the first five are managed by `SECURITY DEFINER` admin RPCs (`set_gate_override`, `clear_gate_override`, `start_test_mode`, `end_test_mode`) — never written directly.
 
 #### `rounds`
 `(round_id, gate_time, range_from, range_to, closed_at)` — table exists but no
@@ -91,43 +111,66 @@ code reads or writes it today. Reserved for future admin/history tooling.
 
 Every public table is RLS-enabled. Policies in [supabase/migrations/0001_init.sql:449-470](supabase/migrations/0001_init.sql#L449-L470) grant `SELECT` to `authenticated` only; there are **no** `INSERT`/`UPDATE`/`DELETE` policies. All writes must go through `SECURITY DEFINER` RPCs.
 
-`public.is_admin()` is a `SECURITY DEFINER` helper that reads `auth.jwt() ->> 'email'`; defined this way to avoid RLS recursion when a policy would otherwise `SELECT` from `staff`. Currently unused by any policy, but available for future admin RPCs.
+`public.is_admin()` is a `SECURITY DEFINER` helper that reads `auth.jwt() ->> 'email'`; defined this way to avoid RLS recursion when a policy would otherwise `SELECT` from `staff`. Not used by any policy today, but gates every admin RPC introduced in 0002 and 0004 (`set_gate_override`, `clear_gate_override`, `start_test_mode`, `end_test_mode`).
 
 ---
 
 ## 4. Gate logic
 
-Implemented in [`get_gate_info()`](supabase/migrations/0001_init.sql#L116-L155).
+Live implementation after migration 0002 lives in [supabase/migrations/0002_gate_override.sql](supabase/migrations/0002_gate_override.sql) and is further adjusted by [0003_extend_range_to_sunday.sql](supabase/migrations/0003_extend_range_to_sunday.sql). The function has two branches: a natural first-Saturday computation, and an admin-override short-circuit that takes priority while a set-and-unexpired override is present.
+
+### 4.1 Natural branch
 
 - **Gate time:** 20:00 `Asia/Taipei` on the **first Saturday** of the current month.
 - **Computation** ([`first_saturday_of`](supabase/migrations/0001_init.sql#L103-L109)):
   `month_1st + ((6 - dow(month_1st) + 7) % 7)` days. Covered by all 7 dow cases in [supabase/tests/first_saturday_of.sql](supabase/tests/first_saturday_of.sql).
 - **Rollover:** if the current month's gate has already passed, the function advances to next month's first Saturday.
 - **Bookable window** (returned as `range_from`/`range_to`):
-  - `range_from` = the gate date itself
-  - `range_to` = next Sunday on or after `gate_date + 6 months`, via `public.next_sunday_on_or_after(date)` (migration 0003). Example: gate `2026-05-02` → `range_to = 2026-11-08`.
+  - `range_from` = the gate date itself.
+  - `range_to` = next Sunday on or after `gate_date + 6 months`, via [`public.next_sunday_on_or_after(date)`](supabase/migrations/0003_extend_range_to_sunday.sql) (migration 0003). Example: gate `2026-05-02` → `range_to = 2026-11-08`.
 - **Round label:** `to_char(v_gate at time zone 'Asia/Taipei', 'YYYY-MM')` — e.g. `2026-05`.
-- **Returned shape:**
-  ```json
-  { "gate_open": true,
-    "gate_time": "2026-05-02T12:00:00Z",
-    "current_round": "2026-05",
-    "range_from": "2026-05-02",
-    "range_to":   "2026-11-02" }
-  ```
 
-Client polls this RPC once a minute via [`useGateInfo`](src/hooks/useGateInfo.js) so a sitting page flips from "closed" to "open" at 20:00 without a manual refresh. The second-level countdown in [`StatusBar`](src/components/StatusBar.jsx#L4-L22) is purely display (client clock), while authoritative open/closed comes from the server on each refetch.
+### 4.2 Override branch
+
+If `settings.gate_override_time` is non-empty, `get_gate_info()` uses the override's values instead — **unless** the override has auto-expired. Auto-expiry is computed from the override's own gate month: expiry = 20:00 on the first Saturday of the month *after* `gate_override_time`. Once `now() >= expiry`, the override rows are ignored and the natural branch runs. Rows are not physically deleted on expiry — they just stop being honored, and the admin page surfaces a banner prompting cleanup.
+
+When the override branch wins, fallback defaults are computed per missing field:
+- `range_from` defaults to the override's gate date.
+- `range_to` defaults to next Sunday on/after `gate_date + 6 months` (same helper as the natural branch).
+- `current_round` defaults to `YYYY-MM` of the override's gate time.
+
+### 4.3 Returned shape
+
+```json
+{ "gate_open":     true,
+  "gate_time":     "2026-05-02T12:00:00Z",
+  "current_round": "2026-05",
+  "range_from":    "2026-05-02",
+  "range_to":      "2026-11-08",
+  "override":      false }
+```
+
+`override` is a new boolean added by 0002 to let the client distinguish natural vs. overridden rounds (used by the admin page; unused by the booking page today).
+
+### 4.4 Client refetch
+
+Client polls this RPC once a minute via [`useGateInfo`](src/hooks/useGateInfo.js) so a sitting page flips from "closed" to "open" at the computed gate time without a manual refresh. The second-level countdown in [`StatusBar`](src/components/StatusBar.jsx) is purely display (client clock), while authoritative open/closed comes from the server on each refetch.
 
 ---
 
-## 5. Auth and registration flow
+## 5. Auth, routes, and registration flow
 
 Handled in [`useAuth`](src/hooks/useAuth.js) and routed by [`App`](src/App.jsx).
 
 1. **No session** → render [`LoginButton`](src/components/LoginButton.jsx) → `supabase.auth.signInWithOAuth({ provider: 'google', redirectTo: window.location.origin })`.
 2. **Session exists, staff row not found** for the email → render [`RegisterPage`](src/pages/RegisterPage.jsx). User types their `work_id`, which calls [`register_staff(p_work_id)`](supabase/migrations/0001_init.sql#L164-L209).
-3. **Registered and active** → render [`BookingPage`](src/pages/BookingPage.jsx).
-4. **`/admin`** → gated on `staff.is_admin`; currently renders a Phase-2 placeholder ([src/App.jsx:47-58](src/App.jsx#L47-L58)).
+3. **Registered and active** → React Router renders one of:
+   - `/` → [`BookingPage`](src/pages/BookingPage.jsx)
+   - `/help` → [`HelpPage`](src/pages/HelpPage.jsx) (static usage guide, zh-TW)
+   - `/records` → [`RecordsPage`](src/pages/RecordsPage.jsx) (full history browser, all users)
+   - `/admin` → [`AdminPage`](src/pages/AdminPage.jsx), gated on `staff.is_admin` (redirects to `/` if not admin)
+   - any other path → redirects to `/`
+4. [`StatusBar`](src/components/StatusBar.jsx) surfaces `說明` / `紀錄` links for everyone, plus `管理` for admins, plus `登出`. Route-level guards are in `App.jsx`, not the buttons.
 
 ### `register_staff` rules ([migration L164-L209](supabase/migrations/0001_init.sql#L164-L209))
 
@@ -146,12 +189,16 @@ Sign-out clears the local `staff` state immediately ([`useAuth.js:68-71`](src/ho
 
 [`BookingPage`](src/pages/BookingPage.jsx) composes:
 
-- [`StatusBar`](src/components/StatusBar.jsx) — round, open/closed chip, countdown, range, sign-out.
+- [`StatusBar`](src/components/StatusBar.jsx) — round, open/closed chip, countdown, range, route links, sign-out.
 - [`CalendarGrid`](src/components/CalendarGrid.jsx) + 7× [`MiniCalendar`](src/components/MiniCalendar.jsx) — the 7 months starting at `range_from`'s month.
 - [`BookingPanel`](src/components/BookingPanel.jsx) — form, validation, submit button.
 - [`MyBookings`](src/components/MyBookings.jsx) — annual-points bar, round-days bar, list of own rows.
-- [`PublicLog`](src/components/PublicLog.jsx) — full log of the current round with submit timestamps in Taipei time.
+- [`PublicLog`](src/components/PublicLog.jsx) — full log of the current round with submit timestamps in Taipei time. Responsive: table on ≥ 640px, stacked cards on mobile (see §13).
 - [`ConfirmDialog`](src/components/ConfirmDialog.jsx) — mandatory confirmation modal (no-cancel warning).
+
+### 6.0 Closed-state overlay
+
+When `gate_open` is `false`, [`BookingPage`](src/pages/BookingPage.jsx) renders a semi-transparent overlay (rgba white, 0.55 alpha + 1px backdrop blur) covering the calendar grid + booking panel + MyBookings. The overlay blocks pointer events and centers a small card with 🔒 lock icon, "預約尚未開放", and the upcoming gate time. `StatusBar` (with the live countdown) and `PublicLog` sit outside the overlay and remain readable/interactive.
 
 ### 6.1 Date selection
 
@@ -200,7 +247,9 @@ These mirror — but do **not** replace — the authoritative checks in [`submit
 
 ## 7. `submit_booking` — server-authoritative core
 
-[`submit_booking(p_start date, p_end date)`](supabase/migrations/0001_init.sql#L219-L391). Single transaction; order matters.
+The live definition lives in [migration 0005](supabase/migrations/0005_fix_submit_booking_variable_conflict.sql) (a full `create or replace` of the original from 0001). The original 0001 version hit "column reference 'd' is ambiguous" because the PL/pgSQL loop variable and a CTE column alias both used the name `d` — with the default `plpgsql.variable_conflict = error`, Postgres refuses to guess. 0005 renames the variable to `v_day`; CTE stays as `d`.
+
+Single transaction; order matters.
 
 1. **Identify caller** via JWT email → lookup active `staff` row.
 2. **Load settings** (5 reads).
@@ -253,12 +302,64 @@ Shown in [`MyBookings`](src/components/MyBookings.jsx) as a progress bar (`annua
 
 ---
 
+## 10a. Admin page (`/admin`)
+
+[`AdminPage`](src/pages/AdminPage.jsx), gated on `staff.is_admin` in [App.jsx](src/App.jsx).
+
+### 10a.1 Current-state card
+
+Shows `get_gate_info()` rendered as a label grid: mode (override vs. default), open/closed, gate time, round, range. "Override active" is styled amber. If the client fetched a non-empty override from `settings` but `get_gate_info()` returned `override: false`, a yellow banner prompts the admin to clear the stale rows.
+
+### 10a.2 Test mode card
+
+Self-contained flow for dress rehearsals. Backed by [`start_test_mode`](supabase/migrations/0004_test_mode.sql) / [`end_test_mode`](supabase/migrations/0004_test_mode.sql).
+
+- **Not active:** form with gate time (datetime-local, Taipei), range from/to, plus an "開始測試模式" button. Defaults are pre-filled: time = now, from = today, to = next-Sunday-on-or-after (today + 6 months). On submit calls `start_test_mode(p_gate_time, p_range_from, p_range_to)`, which generates a unique `TEST-YYYYMMDD-HHMI` round id, installs it as the active gate override, and records it in `settings.test_active_round`. Rejects if a test is already running.
+- **Active:** blue-bordered card with 進行中 pill, the test round id, a live count of bookings tagged with that round (plain `select count(*)` scoped to the round), and a red "結束測試並刪除測試預約" button. `end_test_mode()` exact-matches on `round = test_active_round`, belt-and-braces checks the round label starts with `TEST-`, deletes matching `bookings` rows, then blanks all override slots + `test_active_round`. Real-round bookings (`YYYY-MM`) are never touched by this path.
+
+The client-side confirm dialog surfaces the exact deletion count before the RPC is called.
+
+### 10a.3 Gate override card
+
+Non-test override — same override slots, but the admin can pick any round label including `YYYY-MM` overlap with a real round. Form: gate time (datetime-local, Taipei), range from/to, round label. "儲存並套用" calls [`set_gate_override`](supabase/migrations/0002_gate_override.sql); "清除自訂設定" calls [`clear_gate_override`](supabase/migrations/0002_gate_override.sql).
+
+Auto-fill: picking a gate time populates `from = gate_date`, `to = next-Sunday-on-or-after(gate_date + 6 months)`, `round = YYYY-MM` of gate date — only if the field was empty. Manual edits are preserved. The front-end's `taipeiLocalToISO` appends `+08:00` to the `datetime-local` string (Taipei is UTC+8 constant, no DST), so the ISO sent to the server matches the admin's wall clock regardless of browser timezone.
+
+---
+
+## 10b. Records page (`/records`)
+
+[`RecordsPage`](src/pages/RecordsPage.jsx). Any registered user can view — read access matches the RLS policy that grants `SELECT` on `bookings` to `authenticated`.
+
+- Filters: dropdown over `round` (distinct values pulled on mount) + "僅顯示我的" checkbox scoping to `staff.work_id`.
+- Summary: 共 N 筆, 總計 M 天.
+- Query: `select * from bookings order by submitted_at desc limit 1000`, with `round` / `staff_work_id` filters applied conditionally.
+- Rendering: table on desktop, stacked cards on mobile (see §13). "Mine" rows get a blue (`--c-selected`) background on both layouts.
+
+---
+
+## 10c. Help page (`/help`)
+
+[`HelpPage`](src/pages/HelpPage.jsx). Static zh-TW usage guide: open time, how to select dates, rule summary, calendar color legend, and pointers to other pages. Numeric values (4–10 days, 14 days/round, 12 annual points) are hard-coded in the text — the component comment calls out that if an admin edits `settings`, this page must be updated to match.
+
+---
+
 ## 11. Time handling
 
 All server-side date math anchors to `Asia/Taipei` ([migration L131-L145](supabase/migrations/0001_init.sql#L131-L145)). The client makes two distinct choices:
 
 - **Date-only** (`start_date`, `end_date`, `range_from`, `range_to`) — treated as opaque `YYYY-MM-DD` strings rendered through local-wall-clock `Date` objects. No TZ math. See comment in [src/lib/dateUtils.js:1-9](src/lib/dateUtils.js#L1-L9).
 - **Timestamps** (`submitted_at`, `gate_time`) — rendered through `Intl.DateTimeFormat` bound to `Asia/Taipei` via [`fmtTaipeiTime`](src/lib/dateUtils.js#L77-L80) / [`fmtTaipeiDateTime`](src/lib/dateUtils.js#L82-L85). The countdown uses `msUntil` + `splitDuration` with local `Date.now()` — rounding errors are bounded by the once-per-minute server refetch.
+
+---
+
+## 11a. Responsive layout
+
+[`useMediaQuery`](src/hooks/useMediaQuery.js) exposes `useMediaQuery(query)` and `useIsMobile()` (matches `(max-width: 639px)`). Subscribes to `MediaQueryList.change` so resizing mid-session swaps layouts without a reload.
+
+Consumers today: [`PublicLog`](src/components/PublicLog.jsx) and [`RecordsPage`](src/pages/RecordsPage.jsx). Both render a horizontal-scroll table on desktop and a stacked card list on mobile. The rest of the app uses flexible layouts (`flex-wrap`, `grid auto-fit`) and doesn't need the hook.
+
+Tables that stay on desktop add `white-space: nowrap` to date-range, round, timestamp, and work-id columns to prevent ugly mid-string wrapping when the viewport is just-barely wide enough.
 
 ---
 
@@ -274,25 +375,27 @@ Icons are generated from SVG masters via `node scripts/generate-icons.mjs` (see 
 
 ## 13. Business rules (summary)
 
-Pulled directly from settings seed + `submit_booking`:
+Pulled directly from settings values + `submit_booking`:
 
-- Gate opens **20:00 Asia/Taipei on the first Saturday** of each month.
-- Bookable window: **gate date → gate date + 6 months**.
-- **One consecutive block of 4–10 days** per submission.
+- Gate opens **20:00 Asia/Taipei on the first Saturday** of each month, unless an admin override is set (see §4.2).
+- Bookable window: **gate date → next Sunday on/after gate date + 6 months**.
+- **One consecutive block of 4–10 days** per submission (0006 raised the upper bound from 7).
 - **Max 14 days per person per round**, counted against approved bookings.
 - **Max 2 people per day**.
 - **12 annual points per person**, one per booking, counted by `booking_year = EXTRACT(YEAR FROM start_date)`.
-- Auto-approved on submit. **No cancellation path** exists in code.
+- Auto-approved on submit. **No cancellation path** exists in user code. Admin can end a test round (deletes tagged rows) or clear an override (leaves bookings in place).
 - Priority is by `submitted_at` (server-captured pre-lock).
-- All settings are editable live via the `settings` table — no code change needed.
+- All numeric settings are editable live via the `settings` table — no code change needed. The help page text will get out of sync until manually updated.
 
 ---
 
 ## 14. Deployment model
 
-- Frontend: Vercel auto-deploys on push to `main` (per [README.md](README.md)).
-- Backend: Supabase project provisioned manually per [SUPABASE_SETUP.md](SUPABASE_SETUP.md); migrations applied once via SQL editor.
+- Frontend: Vercel auto-deploys on push to `main` (per [README.md](README.md)). Client-side routing survives hard-refresh via [vercel.json](vercel.json)'s catch-all rewrite to `/index.html`.
+- Backend: Supabase project provisioned manually per [SUPABASE_SETUP.md](SUPABASE_SETUP.md); migrations applied in order via SQL editor.
 - Secrets: `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` set in Vercel env; `.env` locally.
+
+When re-running migrations against a fresh DB, apply 0001 → 0006 in order. Each is wrapped in its own `begin/commit`.
 
 ---
 
@@ -300,9 +403,12 @@ Pulled directly from settings seed + `submit_booking`:
 
 Discoverable by grep in the current code:
 
-- `/admin` is a placeholder; no admin UI for staff management, setting edits, CSV export, or round history ([App.jsx:47-58](src/App.jsx#L47-L58)).
-- `public.rounds` table is defined but unused — no round-closing job, no historical archive.
-- `get_calendar_data()` RPC is defined but not called from the client.
-- `approved=false` bookings are filtered out of every server check, but there's no code path that ever sets `approved=false`.
+- `/admin` now covers gate-time control (override + test mode) but **does not** cover staff management, numeric-setting edits via UI, or CSV export. Admin still edits staff / numeric settings directly in the Supabase table editor.
+- `public.rounds` table is defined but unused — no round-closing job, no historical archive. [`RecordsPage`](src/pages/RecordsPage.jsx) browses `bookings` directly instead.
+- `get_calendar_data()` RPC is defined but not called from the client — calendar counts are derived client-side in [`useCalendarData`](src/hooks/useCalendarData.js).
+- `approved=false` bookings are filtered out of every server check, but there's no code path that ever sets `approved=false` (only `end_test_mode` removes rows, and it deletes instead of flipping the flag).
+- Help page rule numbers (4–10 days, 14/round, 12/year) are hard-coded; editing `settings` does not update the help text.
+- Expired override rows sit in `settings` until admin clicks "清除自訂設定" — `get_gate_info()` ignores them but they aren't auto-deleted.
+- A test round's bookings count against the same per-day / per-person / annual caps as real rounds during the test window, because `submit_booking` filters only on `round = current_round`. Since `end_test_mode` deletes the test rows, the effect is transient but real while the test is running.
 - [VACATION_SYSTEM_V2_PLAN.md](VACATION_SYSTEM_V2_PLAN.md) is the source-of-truth design doc; this spec describes the implementation.
 - Legacy GAS reference files ([gas_code.js](gas_code.js), [vacation_booking.html](vacation_booking.html)) are kept for reference only.
