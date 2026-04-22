@@ -44,6 +44,7 @@ Applied in order; each is a standalone transaction.
 | [0004_test_mode.sql](supabase/migrations/0004_test_mode.sql) | `start_test_mode`/`end_test_mode` RPCs and `test_active_round` tracker. Test bookings carry a `TEST-YYYYMMDD-HHMI` round tag; ending test mode exact-matches that tag and deletes only test rows. |
 | [0005_fix_submit_booking_variable_conflict.sql](supabase/migrations/0005_fix_submit_booking_variable_conflict.sql) | Bug fix — renames PL/pgSQL loop variable `d` → `v_day` in `submit_booking` to resolve "column reference 'd' is ambiguous" against the CTE column `d` (PL/pgSQL default `variable_conflict = error`). |
 | [0006_max_consecutive_10.sql](supabase/migrations/0006_max_consecutive_10.sql) | Raises `max_consecutive` from 7 → 10 in `settings`. No function change — `submit_booking` reads from `settings` at call time. |
+| [0007_register_staff_creates_rows.sql](supabase/migrations/0007_register_staff_creates_rows.sql) | Self-registration: drops the one-arg `register_staff(text)` and replaces it with `register_staff(work_id, name)` that creates the staff row on first login if absent. Needed because this project doesn't use CSV pre-seeding. |
 
 Environment variables (see [.env.example](.env.example)):
 - `VITE_SUPABASE_URL`
@@ -172,14 +173,18 @@ Handled in [`useAuth`](src/hooks/useAuth.js) and routed by [`App`](src/App.jsx).
    - any other path → redirects to `/`
 4. [`StatusBar`](src/components/StatusBar.jsx) surfaces `說明` / `紀錄` links for everyone, plus `管理` for admins, plus `登出`. Route-level guards are in `App.jsx`, not the buttons.
 
-### `register_staff` rules ([migration L164-L209](supabase/migrations/0001_init.sql#L164-L209))
+### `register_staff(p_work_id, p_name)` rules
+
+Live definition in [0007_register_staff_creates_rows.sql](supabase/migrations/0007_register_staff_creates_rows.sql). Replaced the one-arg original from 0001 because this project doesn't pre-seed the `staff` table via CSV — registration has to be able to create rows, not just bind emails.
 
 - Must be logged in (`auth.jwt() ->> 'email'` non-null) — else `尚未登入`.
+- Both `p_work_id` and `p_name` are `btrim`-ed; empty values return `請填寫員編` / `請填寫姓名`.
 - If the caller's email is already bound to a **different** `work_id` → `此 Google 帳號已綁定其他員編`.
-- If `work_id` not found → `查無此員編`.
-- If `work_id` is inactive → `此員編已停用`.
-- If `work_id` already has a different email bound → `此員編已被其他 Google 帳號綁定`.
-- Otherwise: set `email = caller email` and set `registered_at` if not set. Returns `{success:true, work_id, name}`.
+- **Row not found for work_id** → INSERT a new row with `email = caller email`, `is_admin = false`, `active = true`, `registered_at = now()`. Self-registration can never elevate to admin.
+- Row found but `active = false` → `此員編已停用`.
+- Row found with a different email already bound → `此員編已被其他 Google 帳號綁定`.
+- Row found and matches (or has null email): UPDATE `email = caller email`, preserve existing `name` if set (so an admin-chosen display name isn't overwritten), set `registered_at` if not set.
+- Returns `{success:true, work_id, name}` on either path.
 
 Sign-out clears the local `staff` state immediately ([`useAuth.js:68-71`](src/hooks/useAuth.js#L68-L71)).
 

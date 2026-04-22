@@ -15,7 +15,7 @@ Target launch: 2026-05-02 (first real booking round). See [VACATION_SYSTEM_V2_PL
 
 ## First-time setup
 
-Follow [SUPABASE_SETUP.md](SUPABASE_SETUP.md) end to end (~30 min). When you're done, `.env` will have the Supabase URL + anon key and you can run `npm run dev`. Apply migrations `0001` → `0006` in order.
+Follow [SUPABASE_SETUP.md](SUPABASE_SETUP.md) end to end (~30 min). When you're done, `.env` will have the Supabase URL + anon key and you can run `npm run dev`. Apply migrations `0001` → `0007` in order. You can skip the CSV-import step — staff rows are created on first login (migration 0007).
 
 ## Dev commands
 
@@ -67,7 +67,8 @@ supabase/
 │   ├── 0003_extend_range_to_sunday.sql          # range_to snaps to next Sunday
 │   ├── 0004_test_mode.sql                       # start_/end_test_mode
 │   ├── 0005_fix_submit_booking_variable_conflict.sql  # Fix "column d ambiguous"
-│   └── 0006_max_consecutive_10.sql              # Raise 7 → 10 days
+│   ├── 0006_max_consecutive_10.sql              # Raise 7 → 10 days
+│   └── 0007_register_staff_creates_rows.sql     # Self-registration creates staff row on first login
 └── tests/                                       # SQL test scripts
 
 staff_template.csv             # CSV template for importing pharmacist roster

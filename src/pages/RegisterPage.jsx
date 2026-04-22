@@ -3,16 +3,18 @@ import { supabase } from '../lib/supabase.js'
 
 export default function RegisterPage({ session, onRegistered, onSignOut }) {
   const [workId, setWorkId] = useState('')
+  const [name, setName] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
 
   const submit = async (e) => {
     e.preventDefault()
-    if (!workId.trim()) return
+    if (!workId.trim() || !name.trim()) return
     setSubmitting(true)
     setError('')
     const { data, error: rpcErr } = await supabase.rpc('register_staff', {
       p_work_id: workId.trim(),
+      p_name: name.trim(),
     })
     setSubmitting(false)
     if (rpcErr) {
@@ -33,18 +35,32 @@ export default function RegisterPage({ session, onRegistered, onSignOut }) {
         <p style={{ color: 'var(--c-text-secondary)', fontSize: 14, marginBottom: 16 }}>
           登入 Google 帳號: <strong>{session.user.email}</strong>
           <br />
-          請輸入你的員編以完成綁定。此步驟僅需一次。
+          請輸入你的員編與姓名以完成綁定。此步驟僅需一次。
         </p>
         <form onSubmit={submit} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <input
-            type="text"
-            className="input"
-            placeholder="例: P12345"
-            value={workId}
-            onChange={(e) => setWorkId(e.target.value)}
-            autoFocus
-            style={{ maxWidth: '100%' }}
-          />
+          <label style={{ fontSize: 13, fontWeight: 600 }}>
+            員編
+            <input
+              type="text"
+              className="input"
+              placeholder="例: P12345"
+              value={workId}
+              onChange={(e) => setWorkId(e.target.value)}
+              autoFocus
+              style={{ maxWidth: '100%', marginTop: 4 }}
+            />
+          </label>
+          <label style={{ fontSize: 13, fontWeight: 600 }}>
+            姓名
+            <input
+              type="text"
+              className="input"
+              placeholder="例: 王小明"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              style={{ maxWidth: '100%', marginTop: 4 }}
+            />
+          </label>
           {error && (
             <div style={{ color: 'var(--c-red)', fontSize: 13 }}>✗ {error}</div>
           )}
@@ -52,7 +68,7 @@ export default function RegisterPage({ session, onRegistered, onSignOut }) {
             <button
               type="submit"
               className="btn-primary"
-              disabled={submitting || !workId.trim()}
+              disabled={submitting || !workId.trim() || !name.trim()}
             >
               {submitting ? '送出中...' : '完成註冊'}
             </button>
