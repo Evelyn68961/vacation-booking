@@ -54,7 +54,7 @@ export default function HelpPage({ staff }) {
 
       <Section title="📏 預約規則">
         <ul style={{ paddingLeft: 20, display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <li>每次預約需為 <strong>連續 4–7 天</strong>。</li>
+          <li>每次預約需為 <strong>連續 4–10 天</strong>。</li>
           <li>每輪每人最多 <strong>14 天</strong>（多筆預約加總）。</li>
           <li>每人每年有 <strong>12 點</strong>，一筆預約 = 1 點，依「開始日期」所屬年度計算。</li>
           <li>每天同時最多 <strong>2 人</strong> 休假；滿了就無法選擇。</li>

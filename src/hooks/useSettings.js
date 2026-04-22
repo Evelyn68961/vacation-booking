@@ -5,7 +5,7 @@ const DEFAULTS = {
   maxPerDay: 2,
   maxPerPerson: 14,
   minConsecutive: 4,
-  maxConsecutive: 7,
+  maxConsecutive: 10,
   annualPointsPerPerson: 12,
 }
 

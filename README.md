@@ -59,7 +59,7 @@ staff_template.csv          # CSV template for importing pharmacist roster
 
 - Gate opens at 20:00 on the first Saturday of every month (Asia/Taipei)
 - Bookable window: gate day → 6 months ahead
-- Each submission: one consecutive block of 4–7 days
+- Each submission: one consecutive block of 4–10 days
 - Max 14 days per person per round
 - Max 2 people per day
 - **12 points per person per year**, 1 booking = 1 point (counted by start-date year)

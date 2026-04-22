@@ -19,7 +19,7 @@ Step-by-step to get the backend ready. Allow ~20 minutes total (local setup) + ~
 4. Click **Run** (or `Ctrl+Enter`).
 5. Expect: "Success. No rows returned." If you see an error, stop and share it — don't manually edit and retry, the migration should apply cleanly.
 
-Verify: in **Table Editor**, you should see four tables — `staff`, `bookings`, `settings`, `rounds`. The `settings` table should have 5 rows (max_per_day=2, max_per_person=14, min_consecutive=4, max_consecutive=7, annual_points_per_person=12).
+Verify: in **Table Editor**, you should see four tables — `staff`, `bookings`, `settings`, `rounds`. The `settings` table should have 5 rows (max_per_day=2, max_per_person=14, min_consecutive=4, max_consecutive=10 (after 0006), annual_points_per_person=12).
 
 ## 3. Enable Google OAuth
 

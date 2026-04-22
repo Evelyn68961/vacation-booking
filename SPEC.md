@@ -80,7 +80,7 @@ Key/value text table, seeded at migration time:
 | `max_per_day` | `2` |
 | `max_per_person` | `14` |
 | `min_consecutive` | `4` |
-| `max_consecutive` | `7` |
+| `max_consecutive` | `10` (raised from seed default `7` by migration 0006) |
 | `annual_points_per_person` | `12` |
 
 #### `rounds`
@@ -278,7 +278,7 @@ Pulled directly from settings seed + `submit_booking`:
 
 - Gate opens **20:00 Asia/Taipei on the first Saturday** of each month.
 - Bookable window: **gate date → gate date + 6 months**.
-- **One consecutive block of 4–7 days** per submission.
+- **One consecutive block of 4–10 days** per submission.
 - **Max 14 days per person per round**, counted against approved bookings.
 - **Max 2 people per day**.
 - **12 annual points per person**, one per booking, counted by `booking_year = EXTRACT(YEAR FROM start_date)`.
