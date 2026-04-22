@@ -17,6 +17,7 @@ import BookingPanel from '../components/BookingPanel.jsx'
 import MyBookings from '../components/MyBookings.jsx'
 import PublicLog from '../components/PublicLog.jsx'
 import ConfirmDialog from '../components/ConfirmDialog.jsx'
+import { fmtTaipeiDateTime } from '../lib/dateUtils.js'
 
 export default function BookingPage({ staff, onSignOut }) {
   const { gateInfo, loading: gateLoading } = useGateInfo()
@@ -127,39 +128,77 @@ export default function BookingPage({ staff, onSignOut }) {
         onSignOut={onSignOut}
       />
 
-      <CalendarGrid
-        countByDate={countByDate}
-        selectedDates={selectedDates}
-        bookableFrom={gateInfo?.range_from}
-        bookableTo={gateInfo?.range_to}
-        onDayClick={handleDayClick}
-        maxPerDay={settings.maxPerDay}
-      />
-
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 16 }}>
-        <BookingPanel
-          staff={staff}
-          selStart={selStart}
-          selEnd={selEnd}
-          selDays={selDays}
-          settings={settings}
-          personUsed={personUsed}
+      <div style={{ position: 'relative' }}>
+        <CalendarGrid
           countByDate={countByDate}
-          gateOpen={!!gateInfo?.gate_open}
-          annualUsed={annualUsed}
-          annualBudget={settings.annualPointsPerPerson}
-          annualYear={annualYear}
-          onSubmit={() => setShowConfirm(true)}
-          submitting={submitting}
+          selectedDates={selectedDates}
+          bookableFrom={gateInfo?.range_from}
+          bookableTo={gateInfo?.range_to}
+          onDayClick={handleDayClick}
+          maxPerDay={settings.maxPerDay}
         />
-        <MyBookings
-          bookings={bookings}
-          staff={staff}
-          maxPerPerson={settings.maxPerPerson}
-          annualUsed={annualUsed}
-          annualBudget={settings.annualPointsPerPerson}
-          year={annualYear}
-        />
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 16 }}>
+          <BookingPanel
+            staff={staff}
+            selStart={selStart}
+            selEnd={selEnd}
+            selDays={selDays}
+            settings={settings}
+            personUsed={personUsed}
+            countByDate={countByDate}
+            gateOpen={!!gateInfo?.gate_open}
+            annualUsed={annualUsed}
+            annualBudget={settings.annualPointsPerPerson}
+            annualYear={annualYear}
+            onSubmit={() => setShowConfirm(true)}
+            submitting={submitting}
+          />
+          <MyBookings
+            bookings={bookings}
+            staff={staff}
+            maxPerPerson={settings.maxPerPerson}
+            annualUsed={annualUsed}
+            annualBudget={settings.annualPointsPerPerson}
+            year={annualYear}
+          />
+        </div>
+
+        {!gateInfo?.gate_open && (
+          <div
+            style={{
+              position: 'absolute',
+              inset: 0,
+              background: 'rgba(247, 248, 250, 0.55)',
+              backdropFilter: 'blur(1px)',
+              WebkitBackdropFilter: 'blur(1px)',
+              zIndex: 10,
+              cursor: 'not-allowed',
+              display: 'flex',
+              alignItems: 'flex-start',
+              justifyContent: 'center',
+              paddingTop: 40,
+            }}
+          >
+            <div
+              style={{
+                background: 'var(--c-surface)',
+                padding: '14px 22px',
+                borderRadius: 12,
+                boxShadow: '0 4px 16px rgba(0, 0, 0, 0.08)',
+                border: '1px solid var(--c-border)',
+                textAlign: 'center',
+                maxWidth: 360,
+              }}
+            >
+              <div style={{ fontSize: 22, marginBottom: 6 }}>🔒</div>
+              <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 4 }}>預約尚未開放</div>
+              <div style={{ fontSize: 12, color: 'var(--c-text-secondary)' }}>
+                開放時間：{fmtTaipeiDateTime(gateInfo?.gate_time)}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       <PublicLog bookings={bookings} status={rtStatus} onRefresh={refresh} />
