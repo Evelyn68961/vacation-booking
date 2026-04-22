@@ -4,6 +4,33 @@ import { supabase } from '../lib/supabase.js'
 import { fmtTaipeiDateTime } from '../lib/dateUtils.js'
 import { useIsMobile } from '../hooks/useMediaQuery.js'
 
+// CSV escape: wrap in quotes if the value contains comma / quote / newline,
+// and double any embedded quotes. Plain strings pass through unwrapped.
+function csvEscape(value) {
+  const s = value == null ? '' : String(value)
+  if (/[",\n\r]/.test(s)) {
+    return '"' + s.replace(/"/g, '""') + '"'
+  }
+  return s
+}
+
+function downloadCsv(filename, headers, rows) {
+  const lines = [headers.map(csvEscape).join(',')]
+  for (const row of rows) {
+    lines.push(row.map(csvEscape).join(','))
+  }
+  // Prepend UTF-8 BOM so Excel recognizes Chinese characters correctly.
+  const blob = new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  URL.revokeObjectURL(url)
+}
+
 // Historical booking browser. Any registered user can view — booking rows are
 // already readable via RLS (same data shown in PublicLog for the current round).
 export default function RecordsPage({ staff }) {
@@ -48,6 +75,24 @@ export default function RecordsPage({ staff }) {
     const totalDays = bookings.reduce((sum, b) => sum + b.days, 0)
     return { count: bookings.length, totalDays }
   }, [bookings])
+
+  const handleExport = () => {
+    if (bookings.length === 0) return
+    const headers = ['輪次', '員編', '姓名', '開始日期', '結束日期', '天數', '提交時間']
+    const rows = bookings.map((b) => [
+      b.round,
+      b.staff_work_id,
+      b.name,
+      b.start_date,
+      b.end_date,
+      b.days,
+      fmtTaipeiDateTime(b.submitted_at),
+    ])
+    const roundPart = selectedRound === 'all' ? 'all' : selectedRound
+    const minePart = onlyMine ? `_${staff.work_id}` : ''
+    const stamp = new Date().toISOString().slice(0, 10)
+    downloadCsv(`預約紀錄_${roundPart}${minePart}_${stamp}.csv`, headers, rows)
+  }
 
   return (
     <div style={{ maxWidth: 900, margin: '0 auto', padding: '16px 12px 60px' }}>
@@ -108,9 +153,21 @@ export default function RecordsPage({ staff }) {
             僅顯示我的
           </label>
 
-          <div style={{ marginLeft: 'auto', fontSize: 13, color: 'var(--c-text-secondary)' }}>
-            共 <strong style={{ color: 'var(--c-text)' }}>{summary.count}</strong> 筆，總計{' '}
-            <strong style={{ color: 'var(--c-text)' }}>{summary.totalDays}</strong> 天
+          <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+            <div style={{ fontSize: 13, color: 'var(--c-text-secondary)' }}>
+              共 <strong style={{ color: 'var(--c-text)' }}>{summary.count}</strong> 筆，總計{' '}
+              <strong style={{ color: 'var(--c-text)' }}>{summary.totalDays}</strong> 天
+            </div>
+            {staff.is_admin && (
+              <button
+                className="btn-secondary"
+                onClick={handleExport}
+                disabled={bookings.length === 0}
+                style={{ padding: '4px 12px', fontSize: 13 }}
+              >
+                匯出 CSV
+              </button>
+            )}
           </div>
         </div>
 
