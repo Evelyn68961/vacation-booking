@@ -48,6 +48,23 @@ function addMonthsToDateStr(dateStr, months) {
   )
 }
 
+// Snap forward to the next Sunday on or after dateStr. Matches the DB helper
+// public.next_sunday_on_or_after so the admin's auto-filled range_to mirrors
+// what the natural gate would produce.
+function nextSundayOnOrAfter(dateStr) {
+  const [y, m, d] = dateStr.split('-').map(Number)
+  const dt = new Date(y, m - 1, d)
+  const offset = (7 - dt.getDay()) % 7
+  dt.setDate(dt.getDate() + offset)
+  return (
+    dt.getFullYear() +
+    '-' +
+    String(dt.getMonth() + 1).padStart(2, '0') +
+    '-' +
+    String(dt.getDate()).padStart(2, '0')
+  )
+}
+
 export default function AdminPage({ staff }) {
   const [gateInfo, setGateInfo] = useState(null)
   const [override, setOverride] = useState({ time: '', from: '', to: '', round: '' })
@@ -98,7 +115,7 @@ export default function AdminPage({ staff }) {
       const iso = taipeiLocalToISO(localStr)
       const dateStr = taipeiDateStr(iso)
       if (!form.from) next.from = dateStr
-      if (!form.to) next.to = addMonthsToDateStr(dateStr, 6)
+      if (!form.to) next.to = nextSundayOnOrAfter(addMonthsToDateStr(dateStr, 6))
       if (!form.round) next.round = dateStr.slice(0, 7)
     }
     setForm(next)

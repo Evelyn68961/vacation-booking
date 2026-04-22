@@ -105,7 +105,7 @@ Implemented in [`get_gate_info()`](supabase/migrations/0001_init.sql#L116-L155).
 - **Rollover:** if the current month's gate has already passed, the function advances to next month's first Saturday.
 - **Bookable window** (returned as `range_from`/`range_to`):
   - `range_from` = the gate date itself
-  - `range_to` = `gate_date + 6 months` (exact calendar arithmetic)
+  - `range_to` = next Sunday on or after `gate_date + 6 months`, via `public.next_sunday_on_or_after(date)` (migration 0003). Example: gate `2026-05-02` → `range_to = 2026-11-08`.
 - **Round label:** `to_char(v_gate at time zone 'Asia/Taipei', 'YYYY-MM')` — e.g. `2026-05`.
 - **Returned shape:**
   ```json
