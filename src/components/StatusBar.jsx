@@ -62,6 +62,13 @@ export default function StatusBar({ gateInfo, loading, staff, onSignOut }) {
             <span style={{ fontSize: 13, color: 'var(--c-text-secondary)' }}>
               {staff.name} ({staff.work_id})
             </span>
+            <Link
+              to="/records"
+              className="btn-secondary"
+              style={{ padding: '4px 12px', fontSize: 13, textDecoration: 'none' }}
+            >
+              紀錄
+            </Link>
             {staff.is_admin && (
               <Link
                 to="/admin"

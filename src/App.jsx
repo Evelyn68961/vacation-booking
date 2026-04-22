@@ -3,6 +3,7 @@ import { useAuth } from './hooks/useAuth.js'
 import LoginButton from './components/LoginButton.jsx'
 import AdminPage from './pages/AdminPage.jsx'
 import BookingPage from './pages/BookingPage.jsx'
+import RecordsPage from './pages/RecordsPage.jsx'
 import RegisterPage from './pages/RegisterPage.jsx'
 
 function Spinner() {
@@ -36,6 +37,7 @@ export default function App() {
   return (
     <Routes>
       <Route path="/" element={<BookingPage staff={staff} onSignOut={signOut} />} />
+      <Route path="/records" element={<RecordsPage staff={staff} />} />
       <Route
         path="/admin"
         element={staff.is_admin ? <AdminPage staff={staff} /> : <Navigate to="/" replace />}
