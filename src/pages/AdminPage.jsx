@@ -65,10 +65,36 @@ function nextSundayOnOrAfter(dateStr) {
   )
 }
 
+function nowTaipeiLocalStr() {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Taipei',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).formatToParts(new Date())
+  const get = (t) => parts.find((p) => p.type === t)?.value
+  return `${get('year')}-${get('month')}-${get('day')}T${get('hour')}:${get('minute')}`
+}
+
+function todayTaipeiDateStr() {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Taipei',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date())
+}
+
 export default function AdminPage({ staff }) {
   const [gateInfo, setGateInfo] = useState(null)
   const [override, setOverride] = useState({ time: '', from: '', to: '', round: '' })
   const [form, setForm] = useState({ time: '', from: '', to: '', round: '' })
+  const [testActiveRound, setTestActiveRound] = useState('')
+  const [testBookingCount, setTestBookingCount] = useState(0)
+  const [testForm, setTestForm] = useState({ time: '', from: '', to: '' })
   const [saving, setSaving] = useState(false)
   const [toast, setToast] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -84,6 +110,7 @@ export default function AdminPage({ staff }) {
           'gate_override_range_from',
           'gate_override_range_to',
           'gate_override_round',
+          'test_active_round',
         ]),
     ])
     setGateInfo(gate)
@@ -101,6 +128,24 @@ export default function AdminPage({ staff }) {
       to: ov.to || '',
       round: ov.round || '',
     })
+
+    const activeTest = map.test_active_round || ''
+    setTestActiveRound(activeTest)
+    if (activeTest) {
+      const { count } = await supabase
+        .from('bookings')
+        .select('id', { count: 'exact', head: true })
+        .eq('round', activeTest)
+      setTestBookingCount(count || 0)
+    } else {
+      setTestBookingCount(0)
+      const today = todayTaipeiDateStr()
+      setTestForm({
+        time: nowTaipeiLocalStr(),
+        from: today,
+        to: nextSundayOnOrAfter(addMonthsToDateStr(today, 6)),
+      })
+    }
     setLoading(false)
   }, [])
 
@@ -167,6 +212,57 @@ export default function AdminPage({ staff }) {
     }
   }
 
+  const handleStartTest = async () => {
+    if (!testForm.time) {
+      setToast({ type: 'error', msg: '請選擇測試開放時間' })
+      return
+    }
+    if (!testForm.from || !testForm.to) {
+      setToast({ type: 'error', msg: '請選擇測試預約範圍' })
+      return
+    }
+    if (overrideSet) {
+      if (!confirm('目前已有自訂開放時間設定。開始測試模式會覆蓋它，結束測試時會清除。是否繼續？')) return
+    }
+    setSaving(true)
+    const { data, error } = await supabase.rpc('start_test_mode', {
+      p_gate_time: taipeiLocalToISO(testForm.time),
+      p_range_from: testForm.from,
+      p_range_to: testForm.to,
+    })
+    setSaving(false)
+    if (error) {
+      setToast({ type: 'error', msg: '網路錯誤：' + error.message })
+      return
+    }
+    if (data?.success) {
+      setToast({ type: 'success', msg: `測試模式已開始：${data.round}` })
+      loadAll()
+    } else {
+      setToast({ type: 'error', msg: data?.error || '開始失敗' })
+    }
+  }
+
+  const handleEndTest = async () => {
+    const msg = testBookingCount > 0
+      ? `確定結束測試模式？這會刪除測試期間的 ${testBookingCount} 筆預約。正式輪次的預約不受影響。`
+      : '確定結束測試模式？（測試期間沒有任何預約）'
+    if (!confirm(msg)) return
+    setSaving(true)
+    const { data, error } = await supabase.rpc('end_test_mode')
+    setSaving(false)
+    if (error) {
+      setToast({ type: 'error', msg: '網路錯誤：' + error.message })
+      return
+    }
+    if (data?.success) {
+      setToast({ type: 'success', msg: `測試模式已結束，已刪除 ${data.deleted} 筆預約` })
+      loadAll()
+    } else {
+      setToast({ type: 'error', msg: data?.error || '結束失敗' })
+    }
+  }
+
   useEffect(() => {
     if (!toast) return
     const id = setTimeout(() => setToast(null), 4000)
@@ -184,6 +280,7 @@ export default function AdminPage({ staff }) {
   const overrideSet = !!override.time
   const overrideActive = gateInfo?.override === true
   const overrideExpired = overrideSet && !overrideActive
+  const testActive = !!testActiveRound
 
   return (
     <div style={{ maxWidth: 640, margin: '0 auto', padding: '16px 12px 60px' }}>
@@ -234,6 +331,93 @@ export default function AdminPage({ staff }) {
           ⚠️ 之前設定的自訂時間已過期，系統已自動恢復預設排程。若不再需要，可按下「清除自訂設定」整理紀錄。
         </div>
       )}
+
+      <div
+        className="card p-4 mb-4"
+        style={testActive ? { borderColor: '#60A5FA', borderWidth: 2 } : undefined}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+          <h2 style={{ fontSize: 16, fontWeight: 700 }}>🧪 測試模式</h2>
+          {testActive && (
+            <span style={{
+              padding: '2px 10px', borderRadius: 12, fontSize: 12, fontWeight: 600,
+              background: '#DBEAFE', color: '#1D4ED8',
+            }}>
+              進行中
+            </span>
+          )}
+        </div>
+        <p style={{ fontSize: 13, color: 'var(--c-text-secondary)', marginBottom: 16 }}>
+          開啟一段暫時的測試時間讓所有人試用系統。結束測試時，僅刪除這段期間的預約紀錄；正式輪次的預約不會被影響。
+        </p>
+
+        {testActive ? (
+          <div>
+            <div style={{
+              padding: 12, borderRadius: 8, background: '#EFF6FF',
+              border: '1px solid #BFDBFE', marginBottom: 12, fontSize: 14,
+            }}>
+              <div style={{ marginBottom: 4 }}>
+                測試輪次：<strong style={{ fontFamily: 'monospace' }}>{testActiveRound}</strong>
+              </div>
+              <div style={{ color: 'var(--c-text-secondary)' }}>
+                目前累計 <strong style={{ color: 'var(--c-text)' }}>{testBookingCount}</strong> 筆測試預約
+              </div>
+            </div>
+            <button
+              className="btn-primary"
+              onClick={handleEndTest}
+              disabled={saving}
+              style={{ background: 'var(--c-red)' }}
+            >
+              {saving ? '處理中...' : '結束測試並刪除測試預約'}
+            </button>
+          </div>
+        ) : (
+          <>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12, maxWidth: 360 }}>
+              <label style={{ fontSize: 13, fontWeight: 600 }}>
+                測試開放時間（台北時間）
+                <input
+                  type="datetime-local"
+                  className="input"
+                  value={testForm.time}
+                  onChange={(e) => setTestForm({ ...testForm, time: e.target.value })}
+                  style={{ marginTop: 4 }}
+                />
+              </label>
+              <label style={{ fontSize: 13, fontWeight: 600 }}>
+                可預約起始日
+                <input
+                  type="date"
+                  className="input"
+                  value={testForm.from}
+                  onChange={(e) => setTestForm({ ...testForm, from: e.target.value })}
+                  style={{ marginTop: 4 }}
+                />
+              </label>
+              <label style={{ fontSize: 13, fontWeight: 600 }}>
+                可預約結束日
+                <input
+                  type="date"
+                  className="input"
+                  value={testForm.to}
+                  onChange={(e) => setTestForm({ ...testForm, to: e.target.value })}
+                  style={{ marginTop: 4 }}
+                />
+              </label>
+            </div>
+            <button
+              className="btn-primary"
+              onClick={handleStartTest}
+              disabled={saving}
+              style={{ marginTop: 20 }}
+            >
+              {saving ? '處理中...' : '開始測試模式'}
+            </button>
+          </>
+        )}
+      </div>
 
       <div className="card p-4 mb-4">
         <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>設定自訂開放時間</h2>
