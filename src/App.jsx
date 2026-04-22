@@ -3,6 +3,7 @@ import { useAuth } from './hooks/useAuth.js'
 import LoginButton from './components/LoginButton.jsx'
 import AdminPage from './pages/AdminPage.jsx'
 import BookingPage from './pages/BookingPage.jsx'
+import HelpPage from './pages/HelpPage.jsx'
 import RecordsPage from './pages/RecordsPage.jsx'
 import RegisterPage from './pages/RegisterPage.jsx'
 
@@ -37,6 +38,7 @@ export default function App() {
   return (
     <Routes>
       <Route path="/" element={<BookingPage staff={staff} onSignOut={signOut} />} />
+      <Route path="/help" element={<HelpPage staff={staff} />} />
       <Route path="/records" element={<RecordsPage staff={staff} />} />
       <Route
         path="/admin"

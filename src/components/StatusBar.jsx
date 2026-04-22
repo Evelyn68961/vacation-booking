@@ -63,6 +63,13 @@ export default function StatusBar({ gateInfo, loading, staff, onSignOut }) {
               {staff.name} ({staff.work_id})
             </span>
             <Link
+              to="/help"
+              className="btn-secondary"
+              style={{ padding: '4px 12px', fontSize: 13, textDecoration: 'none' }}
+            >
+              說明
+            </Link>
+            <Link
               to="/records"
               className="btn-secondary"
               style={{ padding: '4px 12px', fontSize: 13, textDecoration: 'none' }}
