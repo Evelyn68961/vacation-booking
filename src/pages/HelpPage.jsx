@@ -28,12 +28,15 @@ export default function HelpPage({ staff }) {
       </div>
 
       <Section title="⏰ 開放時間">
-        <p>
-          系統每月 <strong>第一個週六 20:00</strong> 自動開放下一輪預約。
-          開放後可預約的範圍是：<strong>開放日</strong> 起算約半年，延後到下一個週日。
+        <p>系統每月<strong>第一個週六 20:00</strong>自動開放下一輪預約。</p>
+        <p style={{ marginTop: 6 }}>
+          開放後可預約的範圍：<strong>開放日</strong>起算約半年，延後到下一個週日。
         </p>
         <p style={{ fontSize: 13, color: 'var(--c-text-secondary)', marginTop: 6 }}>
-          例如：2026-05-02（六）20:00 開放 → 可預約至 2026-11-08（日）。
+          例如：
+          <span style={{ whiteSpace: 'nowrap' }}>2026-05-02（六）20:00 開放</span>
+          {' → '}
+          <span style={{ whiteSpace: 'nowrap' }}>可預約至 2026-11-08（日）。</span>
         </p>
       </Section>
 
