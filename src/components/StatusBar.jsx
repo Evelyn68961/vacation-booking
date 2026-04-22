@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { msUntil, splitDuration } from '../lib/dateUtils.js'
 
 function useCountdown(targetIso) {
@@ -56,24 +57,31 @@ export default function StatusBar({ gateInfo, loading, staff, onSignOut }) {
             {round} 輪
           </span>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          {!open && (
-            <div style={{ fontSize: 13, color: 'var(--c-text-secondary)' }}>
-              ⏳ 距離開放: <strong style={{ color: 'var(--c-text)' }}>{countdown}</strong>
-            </div>
-          )}
-          {staff && (
-            <>
-              <span style={{ fontSize: 13, color: 'var(--c-text-secondary)' }}>
-                {staff.name} ({staff.work_id})
-              </span>
-              <button className="btn-secondary" onClick={onSignOut} style={{ padding: '4px 12px', fontSize: 13 }}>
-                登出
-              </button>
-            </>
-          )}
-        </div>
+        {staff && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <span style={{ fontSize: 13, color: 'var(--c-text-secondary)' }}>
+              {staff.name} ({staff.work_id})
+            </span>
+            {staff.is_admin && (
+              <Link
+                to="/admin"
+                className="btn-secondary"
+                style={{ padding: '4px 12px', fontSize: 13, textDecoration: 'none' }}
+              >
+                管理
+              </Link>
+            )}
+            <button className="btn-secondary" onClick={onSignOut} style={{ padding: '4px 12px', fontSize: 13 }}>
+              登出
+            </button>
+          </div>
+        )}
       </div>
+      {!open && (
+        <div style={{ marginTop: 8, fontSize: 13, color: 'var(--c-text-secondary)' }}>
+          ⏳ 距離開放: <strong style={{ color: 'var(--c-text)' }}>{countdown}</strong>
+        </div>
+      )}
       {rangeFrom && rangeTo && (
         <div style={{ marginTop: 8, fontSize: 13, color: 'var(--c-text-secondary)' }}>
           可預約範圍: <strong>{rangeFrom}</strong> ~ <strong>{rangeTo}</strong>
